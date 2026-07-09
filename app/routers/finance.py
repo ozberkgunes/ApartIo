@@ -20,6 +20,16 @@ router = APIRouter()
 managers_only = require_role(ROLE_SITE_MANAGER, ROLE_BUILDING_MANAGER)
 
 
+def _occupant_name(apartment: models.Apartment) -> str:
+    occupancy = apartment.tenant or apartment.owner
+    return occupancy.user.full_name if occupancy else ""
+
+
+def _matches_apartment(q: str, apartment: models.Apartment) -> bool:
+    needle = q.strip().lower()
+    return needle in apartment.label.lower() or needle in _occupant_name(apartment).lower()
+
+
 # ---------- Borçlar ----------
 
 @router.get("/debts")
@@ -28,6 +38,7 @@ def list_debts(
     status: str = "",
     category: str = "",
     timing: str = "",
+    q: str = "",
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -40,6 +51,8 @@ def list_debts(
         debts = [d for d in debts if not d.is_future]
     elif timing == "future":
         debts = [d for d in debts if d.is_future]
+    if q.strip():
+        debts = [d for d in debts if _matches_apartment(q, d.apartment)]
     apartments = (
         scoping.scoped_apartments(db, user) if user.role in models.MANAGER_ROLES else []
     )
@@ -54,6 +67,7 @@ def list_debts(
             "status_filter": status,
             "category_filter": category,
             "timing_filter": timing,
+            "q_filter": q,
             "category_labels": models.DEBT_CATEGORY_LABELS,
             "scope_options": options,
         },
@@ -220,17 +234,69 @@ def record_payment(
     return RedirectResponse(f"/debts/{debt_id}?msg=Tahsilat kaydedildi", status_code=303)
 
 
+@router.post("/debts/{debt_id}/delete")
+def delete_debt(
+    debt_id: int,
+    user: models.User = Depends(require_role(ROLE_SITE_MANAGER)),
+    db: Session = Depends(get_db),
+):
+    debt = db.get(models.Debt, debt_id)
+    if debt is None:
+        raise HTTPException(404, "Borç bulunamadı")
+    if debt.payments:
+        return RedirectResponse(
+            "/debts?err=Tahsilatı olan borç silinemez; önce tahsilatlarını silin",
+            status_code=303,
+        )
+    db.delete(debt)
+    db.commit()
+    return RedirectResponse("/debts?msg=Borç silindi", status_code=303)
+
+
 # ---------- Tahsilatlar (Gelir) ----------
+
+def _parse_date(value: str) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(400, "Geçersiz tarih")
+
 
 @router.get("/payments")
 def list_payments(
     request: Request,
+    q: str = "",
+    start: str = "",
+    end: str = "",
+    sort: str = "",
     user: models.User = Depends(managers_only),
     db: Session = Depends(get_db),
 ):
+    start_date, end_date = _parse_date(start), _parse_date(end)
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
     payments = scoping.scoped_payments(db, user)
+    if start_date:
+        payments = [p for p in payments if p.paid_at >= start_date]
+    if end_date:
+        payments = [p for p in payments if p.paid_at <= end_date]
+    if q.strip():
+        payments = [p for p in payments if _matches_apartment(q, p.debt.apartment)]
+    if sort == "asc":
+        payments = list(reversed(payments))
     return templates.TemplateResponse(
-        request, "finance/payments.html", {"user": user, "payments": payments}
+        request,
+        "finance/payments.html",
+        {
+            "user": user,
+            "payments": payments,
+            "q_filter": q,
+            "start": start,
+            "end": end,
+            "sort": sort,
+        },
     )
 
 

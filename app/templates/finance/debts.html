@@ -5,22 +5,32 @@
   <h4 class="mb-0">{{ 'Borçlar' if user.role != 'resident' else 'Borçlarım' }}</h4>
   <div class="d-flex gap-2 flex-wrap">
     <div class="btn-group">
-      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}" class="btn btn-sm {{ 'btn-secondary' if not timing_filter else 'btn-outline-secondary' }}">Tümü</a>
-      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=active" class="btn btn-sm {{ 'btn-dark' if timing_filter == 'active' else 'btn-outline-dark' }}">Aktif Borçlar</a>
-      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=future" class="btn btn-sm {{ 'btn-info' if timing_filter == 'future' else 'btn-outline-info' }}">İleri Tarihli</a>
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-secondary' if not timing_filter else 'btn-outline-secondary' }}">Tümü</a>
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=active&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-dark' if timing_filter == 'active' else 'btn-outline-dark' }}">Aktif Borçlar</a>
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=future&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-info' if timing_filter == 'future' else 'btn-outline-info' }}">İleri Tarihli</a>
     </div>
     <div class="btn-group">
-      <a href="/debts?category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
-      <a href="/debts?status=pending&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'pending' else 'btn-outline-danger' }}">Bekleyen</a>
-      <a href="/debts?status=partial&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'partial' else 'btn-outline-warning' }}">Kısmi</a>
-      <a href="/debts?status=paid&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'paid' else 'btn-outline-success' }}">Ödenen</a>
+      <a href="/debts?category={{ category_filter }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
+      <a href="/debts?status=pending&category={{ category_filter }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'pending' else 'btn-outline-danger' }}">Bekleyen</a>
+      <a href="/debts?status=partial&category={{ category_filter }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'partial' else 'btn-outline-warning' }}">Kısmi</a>
+      <a href="/debts?status=paid&category={{ category_filter }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'paid' else 'btn-outline-success' }}">Ödenen</a>
     </div>
     <div class="btn-group">
-      <a href="/debts?status={{ status_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-secondary' if not category_filter else 'btn-outline-secondary' }}">Tüm Kategoriler</a>
+      <a href="/debts?status={{ status_filter }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-secondary' if not category_filter else 'btn-outline-secondary' }}">Tüm Kategoriler</a>
       {% for key, label in category_labels.items() %}
-      <a href="/debts?status={{ status_filter }}&category={{ key }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-primary' if category_filter == key else 'btn-outline-primary' }}">{{ label }}</a>
+      <a href="/debts?status={{ status_filter }}&category={{ key }}&timing={{ timing_filter }}&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-primary' if category_filter == key else 'btn-outline-primary' }}">{{ label }}</a>
       {% endfor %}
     </div>
+    {% if user.role in ('site_manager', 'building_manager') %}
+    <form method="get" action="/debts" class="d-flex gap-1">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="category" value="{{ category_filter }}">
+      <input type="hidden" name="timing" value="{{ timing_filter }}">
+      <input type="text" class="form-control form-control-sm" name="q" value="{{ q_filter }}"
+             placeholder="İsim veya daire ara">
+      <button class="btn btn-sm btn-outline-primary">Ara</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -120,12 +130,15 @@
 <div class="card"><div class="card-body">
   <table class="table table-hover align-middle data-table">
     <thead>
-      <tr><th>Daire</th><th>Kategori</th><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Ödenen</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th><th></th></tr>
+      <tr><th>Daire</th>{% if user.role in ('site_manager', 'building_manager') %}<th>Sorumlu</th>{% endif %}<th>Kategori</th><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Ödenen</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th><th></th></tr>
     </thead>
     <tbody>
       {% for d in debts %}
       <tr>
         <td>{{ d.apartment.label }}</td>
+        {% if user.role in ('site_manager', 'building_manager') %}
+        <td>{{ (d.apartment.tenant or d.apartment.owner).user.full_name if (d.apartment.tenant or d.apartment.owner) else '—' }}</td>
+        {% endif %}
         <td>
           <span class="badge text-bg-secondary">{{ d.category_label }}</span>
           {% if d.bill_to_owner %}<span class="badge text-bg-info" title="Bu borç kat malikine aittir">Malik</span>{% endif %}
@@ -143,7 +156,17 @@
           <span class="badge text-bg-info" title="Cari aydan sonraki döneme tahakkuk">İleri Tarihli</span>
           {% endif %}
         </td>
-        <td><a href="/debts/{{ d.id }}" class="btn btn-sm btn-outline-primary">Detay</a></td>
+        <td>
+          <div class="d-flex gap-1 justify-content-end">
+            <a href="/debts/{{ d.id }}" class="btn btn-sm btn-outline-primary">Detay</a>
+            {% if user.role == 'site_manager' %}
+            <form method="post" action="/debts/{{ d.id }}/delete"
+                  onsubmit="return confirm('Bu borç silinsin mi?')">
+              <button class="btn btn-sm btn-outline-danger">Sil</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

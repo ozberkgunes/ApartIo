@@ -556,3 +556,165 @@ def test_gas_subscription_block_manager_scope(client, db_session, seed_data):
         f"/gas-subscriptions/{other_block_apartment.id}/set", data={"value": "yes"}
     )
     assert response.status_code == 403
+
+
+# ---------- Borç silme ----------
+
+def test_delete_debt_without_payments(client, db_session, seed_data):
+    d = seed_data
+    debt = models.Debt(apartment_id=d["apartments"][0].id, description="hatalı borç",
+                       amount=Decimal("100"), due_date=date(2026, 7, 1))
+    db_session.add(debt)
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    page = client.get("/debts").text
+    assert "hatalı borç" in page
+
+    response = client.post(f"/debts/{debt.id}/delete")
+    assert "Borç silindi" in response.text
+    assert db_session.get(models.Debt, debt.id) is None
+
+
+def test_delete_debt_with_payment_refused(client, db_session, seed_data):
+    d = seed_data
+    debt = models.Debt(apartment_id=d["apartments"][0].id, description="ödemeli borç",
+                       amount=Decimal("100"), due_date=date(2026, 7, 1))
+    db_session.add(debt)
+    db_session.flush()
+    db_session.add(models.Payment(debt_id=debt.id, amount=Decimal("50"), paid_at=date(2026, 7, 5)))
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    response = client.post(f"/debts/{debt.id}/delete")
+    assert "Tahsilatı olan borç silinemez" in response.text
+    assert db_session.get(models.Debt, debt.id) is not None
+
+
+def test_delete_debt_forbidden_for_non_site_manager(client, db_session, seed_data):
+    d = seed_data
+    debt = models.Debt(apartment_id=d["apartments"][0].id, description="borç",
+                       amount=Decimal("100"), due_date=date(2026, 7, 1))
+    db_session.add(debt)
+    db_session.commit()
+
+    client.post("/login", data={"email": "manager@test", "password": "test1234"})
+    assert client.post(f"/debts/{debt.id}/delete").status_code == 403
+
+
+def test_dues_undo_generated_debts(client, db_session, seed_data):
+    d = seed_data
+    debts = generate_debts_for_dues(db_session, d["dues"])
+    assert len(debts) == 4
+    db_session.add(models.Payment(debt_id=debts[0].id, amount=Decimal("100"), paid_at=date(2026, 7, 5)))
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    response = client.post(f"/dues/{d['dues'].id}/undo")
+    assert "3 borç silindi" in response.text
+    assert "1 borçta tahsilat olduğundan atlandı" in response.text
+    remaining = db_session.query(models.Debt).all()
+    assert [x.id for x in remaining] == [debts[0].id]
+
+
+# ---------- Borç/tahsilat filtreleri ----------
+
+def test_debts_occupant_column_and_q_filter(client, db_session, seed_data):
+    d = seed_data
+    db_session.add_all([
+        models.Debt(apartment_id=d["apartments"][0].id, description="borç A",
+                    amount=Decimal("100"), due_date=date(2026, 7, 1)),
+        models.Debt(apartment_id=d["apartments"][2].id, description="borç B",
+                    amount=Decimal("100"), due_date=date(2026, 7, 1)),
+    ])
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    page = client.get("/debts").text
+    assert "<th>Sorumlu</th>" in page
+    assert "Diğer Sakin" in page
+
+    filtered = client.get("/debts", params={"q": "diğer"}).text
+    assert "borç B" in filtered and "borç A" not in filtered
+
+    # Sakin: Sorumlu kolonu ve Sil butonu görünmez
+    client.get("/logout")
+    client.post("/login", data={"email": "resident@test", "password": "test1234"})
+    page = client.get("/debts").text
+    assert "<th>Sorumlu</th>" not in page
+    assert "/delete" not in page
+
+
+def test_payments_q_date_filter_and_sort(client, db_session, seed_data):
+    d = seed_data
+    debt_jan = models.Debt(apartment_id=d["apartments"][0].id, description="ocak borcu",
+                           amount=Decimal("100"), due_date=date(2026, 1, 10))
+    debt_jun = models.Debt(apartment_id=d["apartments"][2].id, description="haziran borcu",
+                           amount=Decimal("100"), due_date=date(2026, 6, 10))
+    db_session.add_all([debt_jan, debt_jun])
+    db_session.flush()
+    db_session.add_all([
+        models.Payment(debt_id=debt_jan.id, amount=Decimal("100"), paid_at=date(2026, 1, 5)),
+        models.Payment(debt_id=debt_jun.id, amount=Decimal("100"), paid_at=date(2026, 6, 5)),
+    ])
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    page = client.get("/payments").text
+    assert "ocak borcu" in page and "haziran borcu" in page
+    # Varsayılan sıralama: yeniden eskiye
+    assert page.index("haziran borcu") < page.index("ocak borcu")
+
+    asc = client.get("/payments", params={"sort": "asc"}).text
+    assert asc.index("ocak borcu") < asc.index("haziran borcu")
+
+    after_may = client.get("/payments", params={"start": "2026-05-01"}).text
+    assert "haziran borcu" in after_may and "ocak borcu" not in after_may
+
+    until_feb = client.get("/payments", params={"end": "2026-02-01"}).text
+    assert "ocak borcu" in until_feb and "haziran borcu" not in until_feb
+
+    by_name = client.get("/payments", params={"q": "diğer"}).text
+    assert "haziran borcu" in by_name and "ocak borcu" not in by_name
+
+    assert client.get("/payments", params={"start": "zzz"}).status_code == 400
+
+
+def test_reports_recent_payments(client, db_session, seed_data):
+    d = seed_data
+    debt = models.Debt(apartment_id=d["apartments"][0].id, description="temmuz aidatı",
+                       amount=Decimal("100"), due_date=date(2026, 7, 10))
+    db_session.add(debt)
+    db_session.flush()
+    db_session.add(models.Payment(debt_id=debt.id, amount=Decimal("100"), paid_at=date(2026, 7, 5)))
+    db_session.commit()
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    page = client.get("/reports").text
+    assert "Son Gelirler" in page
+    assert "temmuz aidatı" in page
+
+    # Aralık dışında kalan tahsilat listelenmez
+    out_of_range = client.get("/reports", params={"start": "2025-01-01", "end": "2025-02-01"}).text
+    assert "temmuz aidatı" not in out_of_range
+
+
+# ---------- Malik/Kiracı arama ve filtre ----------
+
+def test_residents_search_and_type_filter(client, db_session, seed_data):
+    # Tablodaki tip rozetleri üzerinden doğrula (soldaki form tüm isimleri her zaman listeler)
+    owner_badge = 'text-bg-info">Malik</span>'
+    tenant_badge = 'text-bg-info">Kiracı</span>'
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    page = client.get("/residents").text
+    assert page.count(owner_badge) == 1 and page.count(tenant_badge) == 1
+
+    tenants = client.get("/residents", params={"occ_type": "tenant"}).text
+    assert tenants.count(tenant_badge) == 1 and tenants.count(owner_badge) == 0
+
+    by_name = client.get("/residents", params={"q": "diğer"}).text
+    assert by_name.count(owner_badge) == 1 and by_name.count(tenant_badge) == 0
+
+    bogus = client.get("/residents", params={"occ_type": "bogus"}).text
+    assert bogus.count(owner_badge) == 1 and bogus.count(tenant_badge) == 1

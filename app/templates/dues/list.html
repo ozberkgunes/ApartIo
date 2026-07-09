@@ -75,12 +75,20 @@
             <td>{{ d.due_date }}</td>
             <td>{{ d.debts | length }} daire</td>
             <td class="text-end">
-              {% if user.role == 'site_manager' or d.block_id == user.block_id %}
-              <form method="post" action="/dues/{{ d.id }}/generate"
-                    onsubmit="return confirm('Kapsamdaki tüm dairelere borç oluşturulacak. Devam edilsin mi?')">
-                <button class="btn btn-sm btn-primary">Borçları Üret</button>
-              </form>
-              {% endif %}
+              <div class="d-flex gap-1 justify-content-end">
+                {% if user.role == 'site_manager' or d.block_id == user.block_id %}
+                <form method="post" action="/dues/{{ d.id }}/generate"
+                      onsubmit="return confirm('Kapsamdaki tüm dairelere borç oluşturulacak. Devam edilsin mi?')">
+                  <button class="btn btn-sm btn-primary">Borçları Üret</button>
+                </form>
+                {% endif %}
+                {% if user.role == 'site_manager' and d.debts %}
+                <form method="post" action="/dues/{{ d.id }}/undo"
+                      onsubmit="return confirm('Bu tanım için üretilen borçlar silinecek (tahsilatı olan borçlar atlanır). Devam edilsin mi?')">
+                  <button class="btn btn-sm btn-outline-danger">Borçları Geri Al</button>
+                </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% else %}

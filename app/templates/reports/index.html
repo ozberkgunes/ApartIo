@@ -85,6 +85,30 @@
     </div></div>
   </div>
 </div>
+
+<div class="row g-3 mt-1">
+  <div class="col-12">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Son Gelirler</h6>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Tarih</th><th>Daire</th><th>Borç</th><th class="text-end">Tutar</th><th>Yöntem</th></tr></thead>
+        <tbody>
+          {% for p in recent_payments %}
+          <tr>
+            <td>{{ p.paid_at }}</td>
+            <td>{{ p.debt.apartment.label }}</td>
+            <td><a href="/debts/{{ p.debt_id }}">{{ p.debt.description }}</a></td>
+            <td class="text-end">{{ p.amount | tl }}</td>
+            <td>{{ p.method_label }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-muted text-center">Bu aralıkta tahsilat yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

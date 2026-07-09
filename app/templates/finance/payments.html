@@ -1,11 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Tahsilatlar — ApartIo{% endblock %}
 {% block content %}
-<h4 class="mb-3">Tahsilatlar (Gelir)</h4>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">Tahsilatlar (Gelir)</h4>
+  <form method="get" action="/payments" class="d-flex gap-1 flex-wrap">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="text" class="form-control form-control-sm" name="q" value="{{ q_filter }}"
+           placeholder="İsim veya daire ara" style="max-width: 200px">
+    <input type="date" class="form-control form-control-sm" name="start" value="{{ start }}" style="max-width: 160px">
+    <input type="date" class="form-control form-control-sm" name="end" value="{{ end }}" style="max-width: 160px">
+    <button class="btn btn-sm btn-outline-primary">Uygula</button>
+  </form>
+</div>
 <div class="card"><div class="card-body">
-  <table class="table table-hover align-middle data-table">
+  <table class="table table-hover align-middle data-table" data-order="[]">
     <thead>
-      <tr><th>Tarih</th><th>Daire</th><th>Borç</th><th class="text-end">Tutar</th><th>Yöntem</th><th>Tahsil Eden</th>{% if user.role == 'site_manager' %}<th></th>{% endif %}</tr>
+      <tr>
+        <th><a href="/payments?q={{ q_filter | urlencode }}&start={{ start }}&end={{ end }}&sort={{ 'asc' if sort != 'asc' else 'desc' }}" class="text-decoration-none">
+          Tarih {{ '▲' if sort == 'asc' else '▼' }}</a></th>
+        <th>Daire</th><th>Borç</th><th class="text-end">Tutar</th><th>Yöntem</th><th>Tahsil Eden</th>{% if user.role == 'site_manager' %}<th></th>{% endif %}
+      </tr>
     </thead>
     <tbody>
       {% for p in payments %}

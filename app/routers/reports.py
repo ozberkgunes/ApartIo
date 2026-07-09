@@ -117,6 +117,7 @@ def reports(
             "category_labels": list(expense_by_category.keys()),
             "category_values": [float(v) for v in expense_by_category.values()],
             "debtors": debtors,
+            "recent_payments": payments[:10],
         },
     )
 

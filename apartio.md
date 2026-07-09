@@ -1,7 +1,7 @@
 # ApartIo — Proje Durum Dokümanı
 
-> Son güncelleme: 08.07.2026
-> Durum: **Faz 1 ve Faz 2 tamamlandı**, gerçek site verisi (Troaspark) yüklendi ve finans eklentileri devrede; Faz 3 bekliyor.
+> Son güncelleme: 09.07.2026
+> Durum: **Faz 1 ve Faz 2 tamamlandı**, gerçek site verisi (Troaspark) yüklendi ve finans eklentileri devrede; Render'da yayında; Faz 3 bekliyor.
 
 ## 1. Proje Özeti
 
@@ -21,7 +21,7 @@ Kapsam kuralları tek merkezden (`app/scoping.py`) uygulanır; her liste/detay s
 - **Veritabanı:** SQLAlchemy 2.0 ORM — geliştirmede SQLite (`apartio.db`), üretimde `DATABASE_URL` ortam değişkeni ile PostgreSQL
 - **Frontend:** Sunucu taraflı Jinja2 şablonları + Bootstrap 5.3 + Chart.js 4 + DataTables 2 (CDN; ayrı Node/React projesi yok — `planned-actual-trip-analysis` projesiyle aynı yaklaşım)
 - **Kimlik doğrulama:** bcrypt parola hash + `itsdangerous` imzalı oturum cookie'si (7 gün)
-- **Test:** pytest + FastAPI TestClient (31 test)
+- **Test:** pytest + FastAPI TestClient (39 test)
 
 ### Çalıştırma
 
@@ -30,9 +30,16 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python seed.py         # demo verisi (bir kez)
 .venv/bin/python import_excel.py # "Aylık Ödeme Takip Dosyası - 2.xlsx" → Troaspark Sitesi (idempotent)
-.venv/bin/python run.py          # http://127.0.0.1:8000
+.venv/bin/python run.py          # http://127.0.0.1:8010 (8000 portu başka projede)
 .venv/bin/python -m pytest tests/ -q
 ```
+
+### Dağıtım (Render) — 09.07.2026
+
+- `run.py` ortama duyarlı: lokalde `127.0.0.1:8010` + hot-reload; Render'da (`RENDER` env değişkeni set) `0.0.0.0:$PORT`, reload kapalı. `PORT`'u Render kendisi atar, elle tanımlanmaz.
+- Önerilen start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- `apartio.db` repoya commit'li (gitignore'dan çıkarıldı) — deploy sonrası gerçek veriyle açılır.
+- **Kısıt:** Render diski geçicidir; canlıda girilen veri her deploy/yeniden başlatmada git'teki kopyaya döner. Çare: dashboard'daki Veri Yedekleme kartı (aşağıda) ile indir/geri yükle; kalıcı çözüm için persistent disk veya PostgreSQL (`DATABASE_URL`).
 
 Kullanıcılar (parola hepsi için `demo1234`): `admin@apart.io` (site yöneticisi) + Excel'den aktarılan kat malikleri `ad.soyad@troaspark.local` (rol: sakin).
 
@@ -59,7 +66,7 @@ ApartIo/
 │   │                      # messages, notifications, documents, reports
 │   ├── templates/         # base + modül şablonları
 │   └── static/
-├── tests/                 # conftest + 13 test
+├── tests/                 # conftest + 39 test
 └── uploads/               # yüklenen belgeler (gitignore'da)
 ```
 
@@ -139,7 +146,19 @@ ApartIo/
 | Doğalgaz abonelik takibi | `/gas-subscriptions` — daire bazlı abone/değil/bilinmiyor (Excel'den 42/22/56), KPI + filtre + tek tıkla güncelleme; `Apartment.gas_subscribed` |
 | Veri temizliği | Gül Sitesi demo verisi silindi (admin korundu); test amaçlı kesilen 56 avans borcu + bildirimleri kaldırıldı; curl kaynaklı bozuk Türkçe karakterli 60 kayıt onarıldı |
 
-### Test Kapsamı (31 test — tümü geçiyor)
+### ✅ Eklentiler — 09.07.2026
+
+| İş | Uygulama |
+|---|---|
+| Render dağıtımı | `run.py` ortama duyarlı hale getirildi (lokal: `127.0.0.1:8010` + reload; Render: `0.0.0.0:$PORT`); `apartio.db` repoya alındı — bkz. "Dağıtım (Render)" bölümü |
+| Veri Yedekleme kartı | Dashboard'da (yalnız site yöneticisi): **Veriyi İndir** → `GET /reports/export-db` — SQLite backup API ile tutarlı kopya, tarih+saat damgalı dosya adı; **Yedekten Geri Yükle** → `POST /reports/import-db` — SQLite imza + `integrity_check` + ApartIo tablo doğrulaması, 10 MB sınır, onay penceresi; **verinin son güncellenme zamanı** (dosya mtime) gösterilir. Render'ın geçici diskine karşı manuel yedek/geri yükleme akışı |
+| Borç silme | `POST /debts/{id}/delete` (satır bazlı "Sil") + `POST /dues/{id}/undo` ("Borçları Geri Al" — o tanımdan üretilen borçları topluca siler). **Tahsilatı olan borç silinmez** (`?err=` uyarısı); toplu geri almada atlanır ve sayısı raporlanır. Yalnız site yöneticisi |
+| Borçlar sayfası | **Sorumlu** kolonu (aktif kiracı, yoksa malik; yalnız yöneticiler görür) + **isim/daire arama** (`?q=`) — mevcut durum/kategori/zamanlama filtreleriyle birlikte çalışır |
+| Tahsilatlar sayfası | Aynı `?q=` araması + **tarih aralığı** (`?start=&end=`, geçersiz tarih → 400, ters aralık düzeltilir) + **tarih sıralaması** (`?sort=asc|desc`, Tarih başlığından ▲/▼); tabloya `data-order="[]"` (DataTables sunucu sırasını ezmesin) |
+| Raporlar | **Son Gelirler** kartı — seçili tarih aralığındaki son 10 tahsilat (Tarih, Daire, Borç linki, Tutar, Yöntem) |
+| Malik/Kiracı sayfası | **Tümü / Malik / Kiracı** tip filtresi (`?occ_type=`) + **isim arama** (`?q=`); birlikte kullanılabilir |
+
+### Test Kapsamı (39 test — tümü geçiyor)
 
 - Parola hash/doğrulama
 - Daire kapsam filtreleri (3 rol) ve `can_access_apartment`
@@ -151,6 +170,9 @@ ApartIo/
 - Toplu borçlandırma (sabit/m², blok yöneticisi kendi bloğuyla sınırlı), kategori doğrulaması
 - Ek aidat: gün > 20 koşulu, açık hesabı, dönem başına tek uygulama, yetki (403)
 - Excel içe aktarma yardımcıları (etiket çözümleme, ay-kolon eşleme, e-posta/tutar dönüşümü)
+- Borç silme: tahsilatsız borç silinir, tahsilatlı reddedilir, yetkisiz rol 403, toplu geri almada atlanan sayısı
+- Borç/tahsilat filtreleri: Sorumlu kolonu (sakinde gizli), `q` araması, tarih aralığı, asc/desc sıralama, geçersiz tarih 400
+- Raporlarda Son Gelirler (aralık içi görünür, aralık dışı görünmez); malik/kiracı tip filtresi + isim arama
 
 ## 5. Yapılacaklar
 

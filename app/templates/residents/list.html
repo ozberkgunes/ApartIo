@@ -42,7 +42,21 @@
   </div>
   <div class="col-lg-8">
     <div class="card"><div class="card-body">
-      <h6 class="card-title">Aktif Kayıtlar</h6>
+      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <h6 class="card-title mb-0">Aktif Kayıtlar</h6>
+        <div class="d-flex gap-2 flex-wrap">
+          <div class="btn-group">
+            <a href="/residents?q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-secondary' if not occ_type_filter else 'btn-outline-secondary' }}">Tümü</a>
+            <a href="/residents?occ_type=owner&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-info' if occ_type_filter == 'owner' else 'btn-outline-info' }}">Malik</a>
+            <a href="/residents?occ_type=tenant&q={{ q_filter | urlencode }}" class="btn btn-sm {{ 'btn-warning' if occ_type_filter == 'tenant' else 'btn-outline-warning' }}">Kiracı</a>
+          </div>
+          <form method="get" action="/residents" class="d-flex gap-1">
+            <input type="hidden" name="occ_type" value="{{ occ_type_filter }}">
+            <input type="text" class="form-control form-control-sm" name="q" value="{{ q_filter }}" placeholder="İsim ara">
+            <button class="btn btn-sm btn-outline-primary">Ara</button>
+          </form>
+        </div>
+      </div>
       <table class="table table-hover align-middle data-table">
         <thead><tr><th>Daire</th><th>Kişi</th><th>Tip</th><th>Başlangıç</th><th></th></tr></thead>
         <tbody>

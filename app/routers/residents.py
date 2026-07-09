@@ -19,10 +19,17 @@ managers_only = require_role(ROLE_SITE_MANAGER, ROLE_BUILDING_MANAGER)
 @router.get("/residents")
 def list_residents(
     request: Request,
+    q: str = "",
+    occ_type: str = "",
     user: models.User = Depends(managers_only),
     db: Session = Depends(get_db),
 ):
     occupancies = scoping.scoped_occupancies(db, user, active_only=True)
+    if occ_type in models.OCC_TYPE_LABELS:
+        occupancies = [o for o in occupancies if o.type == occ_type]
+    if q.strip():
+        needle = q.strip().lower()
+        occupancies = [o for o in occupancies if needle in o.user.full_name.lower()]
     apartments = scoping.scoped_apartments(db, user)
     residents = db.scalars(
         select(models.User)
@@ -32,7 +39,14 @@ def list_residents(
     return templates.TemplateResponse(
         request,
         "residents/list.html",
-        {"user": user, "occupancies": occupancies, "apartments": apartments, "residents": residents},
+        {
+            "user": user,
+            "occupancies": occupancies,
+            "apartments": apartments,
+            "residents": residents,
+            "q_filter": q,
+            "occ_type_filter": occ_type if occ_type in models.OCC_TYPE_LABELS else "",
+        },
     )
 
 

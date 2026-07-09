@@ -170,3 +170,29 @@ def generate_debts(
     else:
         msg = "Yeni borç oluşturulmadı (tüm daireler için zaten üretilmiş)"
     return RedirectResponse(f"/dues?msg={msg}", status_code=303)
+
+
+@router.post("/dues/{dues_id}/undo")
+def undo_generated_debts(
+    dues_id: int,
+    user: models.User = Depends(require_role(ROLE_SITE_MANAGER)),
+    db: Session = Depends(get_db),
+):
+    dues = db.get(models.DuesDefinition, dues_id)
+    if dues is None:
+        raise HTTPException(404, "Aidat tanımı bulunamadı")
+    deleted = skipped = 0
+    for debt in list(dues.debts):
+        if debt.payments:
+            skipped += 1
+        else:
+            db.delete(debt)
+            deleted += 1
+    db.commit()
+    if deleted == 0 and skipped == 0:
+        return RedirectResponse("/dues?msg=Silinecek üretilmiş borç yok", status_code=303)
+    msg = f"{deleted} borç silindi"
+    if skipped:
+        msg += f" ({skipped} borçta tahsilat olduğundan atlandı)"
+    param = "err" if deleted == 0 else "msg"
+    return RedirectResponse(f"/dues?{param}={msg}", status_code=303)
