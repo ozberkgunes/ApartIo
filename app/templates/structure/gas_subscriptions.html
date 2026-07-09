@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Doğalgaz Abonelik — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">Doğalgaz Abonelik Durumu</h4>
+  <div class="btn-group">
+    <a href="/gas-subscriptions" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
+    <a href="/gas-subscriptions?status=subscribed" class="btn btn-sm {{ 'btn-success' if status_filter == 'subscribed' else 'btn-outline-success' }}">Abone</a>
+    <a href="/gas-subscriptions?status=not_subscribed" class="btn btn-sm {{ 'btn-danger' if status_filter == 'not_subscribed' else 'btn-outline-danger' }}">Abone Değil</a>
+    <a href="/gas-subscriptions?status=unknown" class="btn btn-sm {{ 'btn-secondary' if status_filter == 'unknown' else 'btn-outline-secondary' }}">Bilinmiyor</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Abonelik Yapıldı</div>
+      <div class="kpi-value text-success">{{ counts.subscribed }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Abonelik Yapılmadı</div>
+      <div class="kpi-value text-danger">{{ counts.not_subscribed }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Bilinmiyor</div>
+      <div class="kpi-value text-secondary">{{ counts.unknown }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr>
+        <th>Blok</th><th>No</th><th>Nitelik</th><th>m²</th><th>Kat Maliki</th>
+        <th>Abonelik</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in apartments %}
+      <tr>
+        <td>{{ a.block.full_name }}</td>
+        <td>{{ a.number }}</td>
+        <td>{{ a.unit_type or '—' }}</td>
+        <td>{{ a.area_m2 or '—' }}</td>
+        <td>{{ a.owner.user.full_name if a.owner else '—' }}</td>
+        <td>
+          {% if a.gas_subscribed is true %}
+            <span class="badge text-bg-success">Abone</span>
+          {% elif a.gas_subscribed is false %}
+            <span class="badge text-bg-danger">Abone Değil</span>
+          {% else %}
+            <span class="badge text-bg-secondary">Bilinmiyor</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <form method="post" action="/gas-subscriptions/{{ a.id }}/set" class="d-inline">
+            {% if a.gas_subscribed is not true %}
+            <button name="value" value="yes" class="btn btn-sm btn-outline-success">Abone Yap</button>
+            {% endif %}
+            {% if a.gas_subscribed is not false %}
+            <button name="value" value="no" class="btn btn-sm btn-outline-danger">Değil İşaretle</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

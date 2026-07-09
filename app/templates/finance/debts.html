@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Borçlar — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">{{ 'Borçlar' if user.role != 'resident' else 'Borçlarım' }}</h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <div class="btn-group">
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}" class="btn btn-sm {{ 'btn-secondary' if not timing_filter else 'btn-outline-secondary' }}">Tümü</a>
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=active" class="btn btn-sm {{ 'btn-dark' if timing_filter == 'active' else 'btn-outline-dark' }}">Aktif Borçlar</a>
+      <a href="/debts?status={{ status_filter }}&category={{ category_filter }}&timing=future" class="btn btn-sm {{ 'btn-info' if timing_filter == 'future' else 'btn-outline-info' }}">İleri Tarihli</a>
+    </div>
+    <div class="btn-group">
+      <a href="/debts?category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
+      <a href="/debts?status=pending&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'pending' else 'btn-outline-danger' }}">Bekleyen</a>
+      <a href="/debts?status=partial&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'partial' else 'btn-outline-warning' }}">Kısmi</a>
+      <a href="/debts?status=paid&category={{ category_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'paid' else 'btn-outline-success' }}">Ödenen</a>
+    </div>
+    <div class="btn-group">
+      <a href="/debts?status={{ status_filter }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-secondary' if not category_filter else 'btn-outline-secondary' }}">Tüm Kategoriler</a>
+      {% for key, label in category_labels.items() %}
+      <a href="/debts?status={{ status_filter }}&category={{ key }}&timing={{ timing_filter }}" class="btn btn-sm {{ 'btn-primary' if category_filter == key else 'btn-outline-primary' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if user.role in ('site_manager', 'building_manager') %}
+<div class="card mb-3"><div class="card-body">
+  <h6 class="card-title">Manuel Borç Ekle</h6>
+  <form method="post" action="/debts/new" class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">Daire</label>
+      <select class="form-select" name="apartment_id" required>
+        <option value="">— Seçiniz —</option>
+        {% for a in apartments %}
+          <option value="{{ a.id }}">{{ a.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Kategori</label>
+      <select class="form-select" name="category" required>
+        {% for key, label in category_labels.items() %}
+        <option value="{{ key }}" {{ 'selected' if key == 'other' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Açıklama</label>
+      <input type="text" class="form-control" name="description" required>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Tutar (₺)</label>
+      <input type="text" class="form-control" name="amount" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Vade</label>
+      <input type="date" class="form-control" name="due_date" value="{{ today() }}" required>
+    </div>
+    <div class="col-md-1">
+      <button type="submit" class="btn btn-primary w-100">Ekle</button>
+    </div>
+  </form>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+  <h6 class="card-title">Toplu Borçlandırma</h6>
+  <p class="text-muted small mb-2">Kapsamdaki her daireye seçilen kategoride borç oluşturur. Demirbaş ve doğalgaz avansı borçları KMK gereği kat malikine tahakkuk eder.</p>
+  <form method="post" action="/debts/bulk" class="row g-2 align-items-end"
+        onsubmit="return confirm('Kapsamdaki tüm dairelere borç oluşturulacak. Devam edilsin mi?')">
+    {% if user.role == 'site_manager' %}
+    <div class="col-md-3">
+      <label class="form-label">Kapsam</label>
+      <select class="form-select" name="scope" required>
+        {% for opt in scope_options %}
+          <option value="{{ opt.value }}">{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <div class="col-md-3">
+      <label class="form-label">Kapsam</label>
+      <input type="text" class="form-control" value="{{ user.block.full_name if user.block }}" disabled>
+    </div>
+    {% endif %}
+    <div class="col-md-2">
+      <label class="form-label">Kategori</label>
+      <select class="form-select" name="category" required>
+        {% for key, label in category_labels.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Tutar Tipi</label>
+      <select class="form-select" name="amount_mode">
+        <option value="fixed">Daire başına sabit</option>
+        <option value="per_m2">m² başına birim fiyat</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Tutar (₺)</label>
+      <input type="text" class="form-control" name="amount" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Vade</label>
+      <input type="date" class="form-control" name="due_date" value="{{ today() }}" required>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Açıklama</label>
+      <input type="text" class="form-control" name="description" required>
+    </div>
+    <div class="col-md-1">
+      <button type="submit" class="btn btn-warning w-100">Borçlandır</button>
+    </div>
+  </form>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr><th>Daire</th><th>Kategori</th><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Ödenen</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for d in debts %}
+      <tr>
+        <td>{{ d.apartment.label }}</td>
+        <td>
+          <span class="badge text-bg-secondary">{{ d.category_label }}</span>
+          {% if d.bill_to_owner %}<span class="badge text-bg-info" title="Bu borç kat malikine aittir">Malik</span>{% endif %}
+        </td>
+        <td>{{ d.description }}</td>
+        <td class="text-end">{{ d.amount | tl }}</td>
+        <td class="text-end">{{ d.paid_amount | tl }}</td>
+        <td class="text-end">{{ d.remaining | tl }}</td>
+        <td>{{ d.due_date }}</td>
+        <td>
+          <span class="badge {% if d.status == 'paid' %}text-bg-success{% elif d.status == 'partial' %}text-bg-warning{% elif d.is_future %}text-bg-secondary{% else %}text-bg-danger{% endif %}">
+            {{ d.status_label }}
+          </span>
+          {% if d.is_future %}
+          <span class="badge text-bg-info" title="Cari aydan sonraki döneme tahakkuk">İleri Tarihli</span>
+          {% endif %}
+        </td>
+        <td><a href="/debts/{{ d.id }}" class="btn btn-sm btn-outline-primary">Detay</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

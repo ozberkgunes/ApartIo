@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Raporlar — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Finansal Raporlar</h4>
+  <form method="get" action="/reports" class="d-flex gap-2 align-items-center">
+    <input type="date" class="form-control form-control-sm" name="start" value="{{ start }}">
+    <span>—</span>
+    <input type="date" class="form-control form-control-sm" name="end" value="{{ end }}">
+    <button type="submit" class="btn btn-sm btn-primary">Uygula</button>
+  </form>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Toplam Gelir</div>
+      <div class="kpi-value text-success">{{ income_total | tl }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Toplam Gider</div>
+      <div class="kpi-value text-danger">{{ expense_total | tl }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Net</div>
+      <div class="kpi-value {{ 'text-success' if net >= 0 else 'text-danger' }}">{{ net | tl }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small">Tahsilat Oranı</div>
+      <div class="kpi-value">%{{ collection_rate | round(1) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card h-100"><div class="card-body">
+      <h6 class="card-title">Aylık Gelir / Gider</h6>
+      <canvas id="chartMonthly" height="110"></canvas>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <h6 class="card-title">Gider Dağılımı</h6>
+      <canvas id="chartCategories" height="220"></canvas>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">En Borçlu Daireler</h6>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Daire</th><th>Sorumlu</th><th class="text-end">Açık Borç</th></tr></thead>
+        <tbody>
+          {% for a in debtors %}
+          <tr>
+            <td><a href="/apartments/{{ a.id }}">{{ a.label }}</a></td>
+            <td>{{ (a.tenant or a.owner).user.full_name if (a.tenant or a.owner) else '—' }}</td>
+            <td class="text-end text-danger">{{ a.open_debt_total | tl }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-muted text-center">Açık borç yok 🎉</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">CSV Dışa Aktar</h6>
+      <p class="text-muted small">Seçili tarih aralığı için:</p>
+      <div class="d-grid gap-2">
+        <a href="/reports/export/debts?start={{ start }}&end={{ end }}" class="btn btn-outline-primary">Borçlar (CSV)</a>
+        <a href="/reports/export/payments?start={{ start }}&end={{ end }}" class="btn btn-outline-success">Tahsilatlar (CSV)</a>
+        <a href="/reports/export/expenses?start={{ start }}&end={{ end }}" class="btn btn-outline-danger">Giderler (CSV)</a>
+      </div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  new Chart(document.getElementById("chartMonthly"), {
+    type: "bar",
+    data: {
+      labels: {{ months | tojson }},
+      datasets: [
+        { label: "Gelir", data: {{ income_values | tojson }}, backgroundColor: "#198754" },
+        { label: "Gider", data: {{ expense_values | tojson }}, backgroundColor: "#dc3545" }
+      ]
+    },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+  });
+  new Chart(document.getElementById("chartCategories"), {
+    type: "doughnut",
+    data: {
+      labels: {{ category_labels | tojson }},
+      datasets: [{ data: {{ category_values | tojson }},
+        backgroundColor: ["#0d6efd", "#dc3545", "#ffc107", "#198754", "#6f42c1", "#fd7e14", "#20c997", "#6c757d"] }]
+    },
+    options: { responsive: true }
+  });
+</script>
+{% endblock %}

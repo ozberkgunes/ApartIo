@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Malik / Kiracı — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Malik / Kiracı Yönetimi</h4>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yeni Atama</h6>
+      <form method="post" action="/residents/add">
+        <div class="mb-3">
+          <label class="form-label">Daire</label>
+          <select class="form-select" name="apartment_id" required>
+            <option value="">— Seçiniz —</option>
+            {% for a in apartments %}
+              <option value="{{ a.id }}">{{ a.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kişi</label>
+          <select class="form-select" name="user_id" required>
+            <option value="">— Seçiniz —</option>
+            {% for r in residents %}
+              <option value="{{ r.id }}">{{ r.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Tip</label>
+          <select class="form-select" name="occ_type" required>
+            <option value="owner">Malik</option>
+            <option value="tenant">Kiracı</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Başlangıç Tarihi</label>
+          <input type="date" class="form-control" name="start_date" value="{{ today() }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Ekle</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Aktif Kayıtlar</h6>
+      <table class="table table-hover align-middle data-table">
+        <thead><tr><th>Daire</th><th>Kişi</th><th>Tip</th><th>Başlangıç</th><th></th></tr></thead>
+        <tbody>
+          {% for o in occupancies %}
+          <tr>
+            <td><a href="/apartments/{{ o.apartment_id }}">{{ o.apartment.label }}</a></td>
+            <td>{{ o.user.full_name }}</td>
+            <td><span class="badge text-bg-info">{{ o.type_label }}</span></td>
+            <td>{{ o.start_date }}</td>
+            <td class="text-end">
+              <form method="post" action="/residents/{{ o.id }}/end"
+                    onsubmit="return confirm('Kayıt sonlandırılsın mı?')">
+                <button class="btn btn-sm btn-outline-danger">Sonlandır</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

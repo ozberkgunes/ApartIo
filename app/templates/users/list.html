@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Kullanıcılar — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Kullanıcılar</h4>
+  {% if user.role == 'site_manager' %}
+    <a href="/users/new" class="btn btn-primary">Yeni Kullanıcı</a>
+  {% endif %}
+</div>
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr>
+        <th>Ad Soyad</th><th>E-posta</th><th>Telefon</th><th>Rol</th><th>Blok</th><th>Durum</th>
+        {% if user.role == 'site_manager' %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.full_name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.phone or '—' }}</td>
+        <td><span class="badge text-bg-secondary">{{ u.role_label }}</span></td>
+        <td>{{ u.block.full_name if u.block else '—' }}</td>
+        <td>
+          {% if u.is_active %}
+            <span class="badge text-bg-success">Aktif</span>
+          {% else %}
+            <span class="badge text-bg-danger">Pasif</span>
+          {% endif %}
+        </td>
+        {% if user.role == 'site_manager' %}
+        <td class="text-end">
+          <a href="/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-primary">Düzenle</a>
+          {% if u.id != user.id %}
+          <form method="post" action="/users/{{ u.id }}/toggle" class="d-inline">
+            <button class="btn btn-sm btn-outline-warning">
+              {{ 'Pasifleştir' if u.is_active else 'Aktifleştir' }}
+            </button>
+          </form>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

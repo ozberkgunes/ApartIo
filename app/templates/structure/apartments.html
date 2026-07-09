@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Daireler — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Daireler</h4>
+  {% if user.role in ('site_manager', 'building_manager') %}
+    <a href="/apartments/new" class="btn btn-primary">Yeni Daire</a>
+  {% endif %}
+</div>
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr>
+        <th>Blok</th><th>Kat</th><th>No</th><th>m²</th><th>Malik</th><th>Kiracı</th>
+        <th class="text-end">Açık Borç</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in apartments %}
+      <tr>
+        <td>{{ a.block.full_name }}</td>
+        <td>{{ a.floor_no }}</td>
+        <td>{{ a.number }}</td>
+        <td>{{ a.area_m2 or '—' }}</td>
+        <td>{{ a.owner.user.full_name if a.owner else '—' }}</td>
+        <td>{{ a.tenant.user.full_name if a.tenant else '—' }}</td>
+        <td class="text-end">{{ a.open_debt_total | tl }}</td>
+        <td class="text-end">
+          <a href="/apartments/{{ a.id }}" class="btn btn-sm btn-outline-primary">Detay</a>
+          {% if user.role in ('site_manager', 'building_manager') %}
+            <a href="/apartments/{{ a.id }}/edit" class="btn btn-sm btn-outline-secondary">Düzenle</a>
+          {% endif %}
+          {% if user.role == 'site_manager' %}
+          <form method="post" action="/apartments/{{ a.id }}/delete" class="d-inline"
+                onsubmit="return confirm('Bu daire silinsin mi?')">
+            <button class="btn btn-sm btn-outline-danger">Sil</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

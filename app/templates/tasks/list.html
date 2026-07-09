@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Görevler — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Görev / İş Emri Yönetimi</h4>
+  <div class="btn-group">
+    <a href="/tasks" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
+    <a href="/tasks?status=todo" class="btn btn-sm {{ 'btn-danger' if status_filter == 'todo' else 'btn-outline-danger' }}">Bekleyen</a>
+    <a href="/tasks?status=in_progress" class="btn btn-sm {{ 'btn-warning' if status_filter == 'in_progress' else 'btn-outline-warning' }}">Devam Eden</a>
+    <a href="/tasks?status=done" class="btn btn-sm {{ 'btn-success' if status_filter == 'done' else 'btn-outline-success' }}">Tamamlanan</a>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yeni Görev</h6>
+      <form method="post" action="/tasks/new">
+        {% if user.role == 'site_manager' %}
+        <div class="mb-3">
+          <label class="form-label">Kapsam</label>
+          <select class="form-select" name="scope" required>
+            {% for opt in scope_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <p class="text-muted small">Görev, sorumlu olduğunuz blok ({{ user.block.full_name if user.block }}) için oluşturulur.</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Başlık</label>
+          <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Açıklama</label>
+          <textarea class="form-control" name="description" rows="2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Personel</label>
+          <select class="form-select" name="staff_id">
+            <option value="">— Atanmadı —</option>
+            {% for s in staff_list %}
+              <option value="{{ s.id }}">{{ s.full_name }} ({{ s.title }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Termin Tarihi</label>
+          <input type="date" class="form-control" name="due_date">
+        </div>
+        <button type="submit" class="btn btn-primary">Oluştur</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr><th>#</th><th>Başlık</th><th>Kapsam</th><th>Personel</th><th>Termin</th><th>Talep</th><th>Durum</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for w in work_orders %}
+          <tr>
+            <td>{{ w.id }}</td>
+            <td>{{ w.title }}{% if w.description %}<div class="small text-muted">{{ w.description | truncate(60) }}</div>{% endif %}</td>
+            <td>{{ w.scope_label }}</td>
+            <td>{{ w.staff.full_name if w.staff else '—' }}</td>
+            <td>{{ w.due_date or '—' }}</td>
+            <td>{% if w.ticket_id %}<a href="/tickets/{{ w.ticket_id }}">#{{ w.ticket_id }}</a>{% else %}—{% endif %}</td>
+            <td>
+              <span class="badge {% if w.status == 'done' %}text-bg-success{% elif w.status == 'in_progress' %}text-bg-warning{% else %}text-bg-danger{% endif %}">
+                {{ w.status_label }}
+              </span>
+            </td>
+            <td class="text-end text-nowrap">
+              <form method="post" action="/tasks/{{ w.id }}/status" class="d-inline">
+                {% if w.status == 'todo' %}
+                  <input type="hidden" name="status" value="in_progress">
+                  <button class="btn btn-sm btn-outline-warning">Başlat</button>
+                {% elif w.status == 'in_progress' %}
+                  <input type="hidden" name="status" value="done">
+                  <button class="btn btn-sm btn-outline-success">Tamamla</button>
+                {% else %}
+                  <input type="hidden" name="status" value="todo">
+                  <button class="btn btn-sm btn-outline-secondary">Yeniden Aç</button>
+                {% endif %}
+              </form>
+              {% if user.role == 'site_manager' %}
+              <form method="post" action="/tasks/{{ w.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Bu görev silinsin mi?')">
+                <button class="btn btn-sm btn-outline-danger">Sil</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-muted text-center">Görev bulunmuyor.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

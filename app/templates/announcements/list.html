@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Duyurular — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Duyurular</h4>
+<div class="row g-3">
+  {% if user.role in ('site_manager', 'building_manager') %}
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yeni Duyuru</h6>
+      <form method="post" action="/announcements/new">
+        {% if user.role == 'site_manager' %}
+        <div class="mb-3">
+          <label class="form-label">Kapsam</label>
+          <select class="form-select" name="scope" required>
+            {% for opt in scope_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <p class="text-muted small">Duyuru, sorumlu olduğunuz blok ({{ user.block.full_name if user.block }}) için yayınlanır.</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Başlık</label>
+          <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">İçerik</label>
+          <textarea class="form-control" name="body" rows="4" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Yayınla</button>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+  <div class="{{ 'col-lg-8' if user.role in ('site_manager', 'building_manager') else 'col-12' }}">
+    {% for a in announcements %}
+    <div class="card mb-3"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <h6 class="mb-1">{{ a.title }}</h6>
+          <span class="badge text-bg-light">{{ a.scope_label }}</span>
+          <span class="small text-muted ms-2">
+            {{ a.created_at.strftime('%d.%m.%Y %H:%M') }}
+            {% if a.creator %} · {{ a.creator.full_name }}{% endif %}
+          </span>
+        </div>
+        {% if user.role == 'site_manager' or a.created_by == user.id %}
+        <form method="post" action="/announcements/{{ a.id }}/delete"
+              onsubmit="return confirm('Bu duyuru silinsin mi?')">
+          <button class="btn btn-sm btn-outline-danger">Sil</button>
+        </form>
+        {% endif %}
+      </div>
+      <p class="mb-0 mt-2" style="white-space: pre-line">{{ a.body }}</p>
+    </div></div>
+    {% else %}
+    <div class="card"><div class="card-body text-center text-muted">Henüz duyuru yok.</div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

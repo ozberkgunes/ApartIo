@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Talep #{{ ticket.id }} — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Talep #{{ ticket.id }}: {{ ticket.title }}</h4>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card mb-3"><div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-4">Daire</dt>
+        <dd class="col-8"><a href="/apartments/{{ ticket.apartment_id }}">{{ ticket.apartment.label }}</a></dd>
+        <dt class="col-4">Kategori</dt><dd class="col-8">{{ ticket.category_label }}</dd>
+        <dt class="col-4">Öncelik</dt><dd class="col-8">{{ ticket.priority_label }}</dd>
+        <dt class="col-4">Oluşturan</dt><dd class="col-8">{{ ticket.creator.full_name }}</dd>
+        <dt class="col-4">Tarih</dt><dd class="col-8">{{ ticket.created_at.strftime('%d.%m.%Y %H:%M') }}</dd>
+        <dt class="col-4">Durum</dt>
+        <dd class="col-8">
+          <span class="badge {% if ticket.status == 'open' %}text-bg-danger{% elif ticket.status == 'in_progress' %}text-bg-warning{% elif ticket.status == 'resolved' %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+            {{ ticket.status_label }}
+          </span>
+        </dd>
+      </dl>
+      <hr>
+      <p class="mb-0" style="white-space: pre-line">{{ ticket.description }}</p>
+    </div></div>
+
+    {% if user.role in ('site_manager', 'building_manager') %}
+    <div class="card mb-3"><div class="card-body">
+      <h6 class="card-title">Durum Değiştir</h6>
+      <form method="post" action="/tickets/{{ ticket.id }}/status" class="d-flex gap-2">
+        <select class="form-select form-select-sm" name="status">
+          {% for value, label in {'open': 'Açık', 'in_progress': 'İşlemde', 'resolved': 'Çözüldü', 'closed': 'Kapalı'}.items() %}
+            <option value="{{ value }}" {{ 'selected' if ticket.status == value }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Güncelle</button>
+      </form>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">İş Emri Oluştur</h6>
+      {% if ticket.work_orders %}
+        <ul class="small mb-2">
+          {% for w in ticket.work_orders %}
+            <li>#{{ w.id }} — {{ w.staff.full_name if w.staff else 'Atanmadı' }} ({{ w.status_label }})</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="/tickets/{{ ticket.id }}/workorder" class="row g-2">
+        <div class="col-6">
+          <select class="form-select form-select-sm" name="staff_id">
+            <option value="">Personel seçin (opsiyonel)</option>
+            {% for s in staff_list %}
+              {% if s.is_active %}<option value="{{ s.id }}">{{ s.full_name }} ({{ s.title }})</option>{% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-4">
+          <input type="date" class="form-control form-control-sm" name="due_date">
+        </div>
+        <div class="col-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100">Oluştur</button>
+        </div>
+      </form>
+    </div></div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yorumlar</h6>
+      {% for c in ticket.comments | sort(attribute='id') %}
+        <div class="border-bottom py-2">
+          <strong>{{ c.user.full_name }}</strong>
+          <span class="small text-muted">{{ c.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+          <p class="mb-0" style="white-space: pre-line">{{ c.body }}</p>
+        </div>
+      {% else %}
+        <p class="text-muted">Henüz yorum yok.</p>
+      {% endfor %}
+      <form method="post" action="/tickets/{{ ticket.id }}/comment" class="mt-3">
+        <div class="mb-2">
+          <textarea class="form-control" name="body" rows="2" placeholder="Yorum yazın..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary">Yorum Ekle</button>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

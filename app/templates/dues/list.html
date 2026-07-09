@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Aidatlar — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Aidat Yönetimi</h4>
+
+{% for sp in surcharge_proposals %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <strong>Ek aidat önerisi — {{ sp.site.name }} ({{ sp.period }}):</strong>
+    Bu ay giderler ({{ sp.expense_total | tl }}) aidat tahakkukunu ({{ sp.dues_total | tl }}) aştı.
+    Açık: <strong>{{ sp.deficit | tl }}</strong> —
+    KMK m.20 gereği {{ sp.apartment_count }} daireye eşit bölünürse daire başına
+    <strong>{{ sp.per_apartment | tl }}</strong> ek aidat düşer.
+  </div>
+  {% if user.role == 'site_manager' %}
+  <form method="post" action="/dues/surcharge/apply"
+        onsubmit="return confirm('{{ sp.apartment_count }} daireye {{ sp.per_apartment | tl }} ek aidat borcu oluşturulacak. Devam edilsin mi?')">
+    <input type="hidden" name="site_id" value="{{ sp.site.id }}">
+    <button type="submit" class="btn btn-warning">Ek Aidat Uygula</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yeni Aidat Tanımı</h6>
+      <form method="post" action="/dues/new">
+        {% if user.role == 'site_manager' %}
+        <div class="mb-3">
+          <label class="form-label">Kapsam</label>
+          <select class="form-select" name="scope" required>
+            {% for opt in scope_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <p class="text-muted small">Aidat, sorumlu olduğunuz blok ({{ user.block.full_name if user.block }}) için tanımlanır.</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Dönem</label>
+          <input type="month" class="form-control" name="period" value="{{ today()[:7] }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Tutar (₺)</label>
+          <input type="text" class="form-control" name="amount" placeholder="750" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Son Ödeme Tarihi</label>
+          <input type="date" class="form-control" name="due_date" value="{{ today() }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Açıklama</label>
+          <input type="text" class="form-control" name="description" placeholder="Örn: Temmuz aidatı">
+        </div>
+        <button type="submit" class="btn btn-primary">Oluştur</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Aidat Tanımları</h6>
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr><th>Dönem</th><th>Kapsam</th><th class="text-end">Tutar</th><th>Son Ödeme</th><th>Üretilen Borç</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for d in dues_list %}
+          <tr>
+            <td>{{ d.period }}</td>
+            <td>{{ d.scope_label }}</td>
+            <td class="text-end">{{ d.amount | tl }}</td>
+            <td>{{ d.due_date }}</td>
+            <td>{{ d.debts | length }} daire</td>
+            <td class="text-end">
+              {% if user.role == 'site_manager' or d.block_id == user.block_id %}
+              <form method="post" action="/dues/{{ d.id }}/generate"
+                    onsubmit="return confirm('Kapsamdaki tüm dairelere borç oluşturulacak. Devam edilsin mi?')">
+                <button class="btn btn-sm btn-primary">Borçları Üret</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted text-center">Henüz aidat tanımı yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Siteler — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Siteler</h4>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">{{ 'Site Düzenle' if edit_site else 'Yeni Site' }}</h6>
+      <form method="post" action="/sites/save">
+        <input type="hidden" name="site_id" value="{{ edit_site.id if edit_site else '' }}">
+        <div class="mb-3">
+          <label class="form-label">Site Adı</label>
+          <input type="text" class="form-control" name="name" value="{{ edit_site.name if edit_site else '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Adres</label>
+          <input type="text" class="form-control" name="address" value="{{ edit_site.address or '' if edit_site else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+        {% if edit_site %}<a href="/sites" class="btn btn-outline-secondary">İptal</a>{% endif %}
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Ad</th><th>Adres</th><th>Blok Sayısı</th><th></th></tr></thead>
+        <tbody>
+          {% for s in sites %}
+          <tr>
+            <td>{{ s.name }}</td>
+            <td>{{ s.address or '—' }}</td>
+            <td>{{ s.blocks | length }}</td>
+            <td class="text-end">
+              <a href="/sites?edit={{ s.id }}" class="btn btn-sm btn-outline-primary">Düzenle</a>
+              <form method="post" action="/sites/{{ s.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Bu site silinsin mi?')">
+                <button class="btn btn-sm btn-outline-danger">Sil</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center">Henüz site tanımlanmadı.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

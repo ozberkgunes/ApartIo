@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Belgeler — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Dosya / Evrak Yönetimi</h4>
+<div class="row g-3">
+  {% if user.role in ('site_manager', 'building_manager') %}
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Belge Yükle</h6>
+      <form method="post" action="/documents/upload" enctype="multipart/form-data">
+        {% if user.role == 'site_manager' %}
+        <div class="mb-3">
+          <label class="form-label">Kapsam</label>
+          <select class="form-select" name="scope" required>
+            {% for opt in scope_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <p class="text-muted small">Belge, sorumlu olduğunuz blok ({{ user.block.full_name if user.block }}) kapsamında saklanır.</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Başlık</label>
+          <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kategori</label>
+          <select class="form-select" name="category">
+            <option value="invoice">Fatura</option>
+            <option value="contract">Sözleşme</option>
+            <option value="decision">Karar</option>
+            <option value="report">Rapor</option>
+            <option value="other" selected>Diğer</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Dosya (en fazla 10 MB)</label>
+          <input type="file" class="form-control" name="file" required>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="is_public" value="1" id="isPublic">
+          <label class="form-check-label" for="isPublic">Sakinler görebilsin</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Yükle</button>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+  <div class="{{ 'col-lg-8' if user.role in ('site_manager', 'building_manager') else 'col-12' }}">
+    <div class="card"><div class="card-body">
+      <table class="table table-hover align-middle data-table">
+        <thead>
+          <tr><th>Başlık</th><th>Kategori</th><th>Kapsam</th><th>Boyut</th><th>Yükleyen</th><th>Tarih</th>
+          {% if user.role in ('site_manager', 'building_manager') %}<th>Görünürlük</th>{% endif %}<th></th></tr>
+        </thead>
+        <tbody>
+          {% for d in documents %}
+          <tr>
+            <td>{{ d.title }}<div class="small text-muted">{{ d.original_name }}</div></td>
+            <td>{{ d.category_label }}</td>
+            <td>{{ d.scope_label }}</td>
+            <td>{{ (d.size / 1024) | round(1) }} KB</td>
+            <td>{{ d.uploader.full_name if d.uploader else '—' }}</td>
+            <td>{{ d.created_at.strftime('%d.%m.%Y') }}</td>
+            {% if user.role in ('site_manager', 'building_manager') %}
+            <td>
+              {% if d.is_public %}<span class="badge text-bg-success">Herkese Açık</span>
+              {% else %}<span class="badge text-bg-secondary">Yönetim</span>{% endif %}
+            </td>
+            {% endif %}
+            <td class="text-end text-nowrap">
+              <a href="/documents/{{ d.id }}/download" class="btn btn-sm btn-outline-primary">İndir</a>
+              {% if user.role == 'site_manager' or d.uploaded_by == user.id %}
+              <form method="post" action="/documents/{{ d.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Bu belge silinsin mi?')">
+                <button class="btn btn-sm btn-outline-danger">Sil</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

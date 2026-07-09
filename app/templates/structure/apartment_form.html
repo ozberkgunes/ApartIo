@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Daire Düzenle' if apartment else 'Yeni Daire' }} — ApartIo{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card"><div class="card-body p-4">
+      <h4 class="mb-4">{{ 'Daire Düzenle' if apartment else 'Yeni Daire' }}</h4>
+      <form method="post" action="/apartments/save">
+        <input type="hidden" name="apartment_id" value="{{ apartment.id if apartment else '' }}">
+        <div class="mb-3">
+          <label class="form-label">Blok</label>
+          <select class="form-select" name="block_id" required>
+            {% for b in blocks %}
+              <option value="{{ b.id }}" {{ 'selected' if apartment and apartment.block_id == b.id }}>{{ b.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kat</label>
+          <input type="number" class="form-control" name="floor_no" value="{{ apartment.floor_no if apartment else 1 }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Daire No</label>
+          <input type="text" class="form-control" name="number" value="{{ apartment.number if apartment else '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Alan (m²)</label>
+          <input type="text" class="form-control" name="area_m2" value="{{ apartment.area_m2 or '' if apartment else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+        <a href="/apartments" class="btn btn-outline-secondary">İptal</a>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

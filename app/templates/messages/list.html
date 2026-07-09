@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Mesajlar — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Mesajlar</h4>
+  <a href="/messages/new" class="btn btn-primary">Yeni Mesaj</a>
+</div>
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle">
+    <thead><tr><th>Konu</th><th>Kişi</th><th>Son Mesaj</th><th></th></tr></thead>
+    <tbody>
+      {% for t in threads %}
+      {% set unread = t.unread_count_for(user.id) %}
+      <tr class="{{ 'fw-bold' if unread }}">
+        <td>
+          <a href="/messages/{{ t.id }}">{{ t.subject }}</a>
+          {% if unread %}<span class="badge rounded-pill text-bg-danger ms-1">{{ unread }}</span>{% endif %}
+        </td>
+        <td>{{ t.other_user(user.id).full_name }}</td>
+        <td class="small text-muted">
+          {% if t.last_message %}
+            {{ t.last_message.created_at.strftime('%d.%m.%Y %H:%M') }} — {{ t.last_message.body | truncate(50) }}
+          {% endif %}
+        </td>
+        <td><a href="/messages/{{ t.id }}" class="btn btn-sm btn-outline-primary">Aç</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted text-center">Henüz mesajlaşma yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

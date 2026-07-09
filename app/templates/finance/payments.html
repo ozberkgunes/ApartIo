@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Tahsilatlar — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Tahsilatlar (Gelir)</h4>
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr><th>Tarih</th><th>Daire</th><th>Borç</th><th class="text-end">Tutar</th><th>Yöntem</th><th>Tahsil Eden</th>{% if user.role == 'site_manager' %}<th></th>{% endif %}</tr>
+    </thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td>{{ p.paid_at }}</td>
+        <td>{{ p.debt.apartment.label }}</td>
+        <td><a href="/debts/{{ p.debt_id }}">{{ p.debt.description }}</a></td>
+        <td class="text-end">{{ p.amount | tl }}</td>
+        <td>{{ p.method_label }}</td>
+        <td>{{ p.receiver.full_name if p.receiver else '—' }}</td>
+        {% if user.role == 'site_manager' %}
+        <td class="text-end">
+          <form method="post" action="/payments/{{ p.id }}/delete"
+                onsubmit="return confirm('Bu tahsilat silinsin mi? Borç durumu yeniden hesaplanır.')">
+            <button class="btn btn-sm btn-outline-danger">Sil</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Personel — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Personel Yönetimi</h4>
+<div class="row g-3">
+  {% if user.role == 'site_manager' %}
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">{{ 'Personel Düzenle' if edit_staff else 'Yeni Personel' }}</h6>
+      <form method="post" action="/staff/save">
+        <input type="hidden" name="staff_id" value="{{ edit_staff.id if edit_staff else '' }}">
+        <div class="mb-3">
+          <label class="form-label">Site</label>
+          <select class="form-select" name="site_id" required>
+            {% for s in sites %}
+              <option value="{{ s.id }}" {{ 'selected' if edit_staff and edit_staff.site_id == s.id }}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Ad Soyad</label>
+          <input type="text" class="form-control" name="full_name" value="{{ edit_staff.full_name if edit_staff else '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Görev</label>
+          <input type="text" class="form-control" name="title" value="{{ edit_staff.title if edit_staff else '' }}"
+                 placeholder="Kapıcı, Güvenlik, Temizlik, Teknisyen..." required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Telefon</label>
+          <input type="text" class="form-control" name="phone" value="{{ edit_staff.phone or '' if edit_staff else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+        {% if edit_staff %}<a href="/staff" class="btn btn-outline-secondary">İptal</a>{% endif %}
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+  <div class="{{ 'col-lg-8' if user.role == 'site_manager' else 'col-12' }}">
+    <div class="card"><div class="card-body">
+      <table class="table table-hover align-middle data-table">
+        <thead><tr><th>Ad Soyad</th><th>Görev</th><th>Telefon</th><th>Site</th><th>Durum</th>{% if user.role == 'site_manager' %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for s in staff_list %}
+          <tr>
+            <td>{{ s.full_name }}</td>
+            <td>{{ s.title }}</td>
+            <td>{{ s.phone or '—' }}</td>
+            <td>{{ s.site.name }}</td>
+            <td>
+              {% if s.is_active %}<span class="badge text-bg-success">Aktif</span>
+              {% else %}<span class="badge text-bg-danger">Pasif</span>{% endif %}
+            </td>
+            {% if user.role == 'site_manager' %}
+            <td class="text-end">
+              <a href="/staff?edit={{ s.id }}" class="btn btn-sm btn-outline-primary">Düzenle</a>
+              <form method="post" action="/staff/{{ s.id }}/toggle" class="d-inline">
+                <button class="btn btn-sm btn-outline-warning">{{ 'Pasifleştir' if s.is_active else 'Aktifleştir' }}</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

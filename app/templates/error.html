@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Hata {{ status_code }} — ApartIo{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-6 text-center">
+    <div class="card">
+      <div class="card-body p-5">
+        <h1 class="display-4">{{ status_code }}</h1>
+        <p class="lead">{{ detail }}</p>
+        <a href="/" class="btn btn-primary">Ana Sayfaya Dön</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

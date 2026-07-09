@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Talepler — ApartIo{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">{{ 'Talep / Arıza Yönetimi' if user.role != 'resident' else 'Taleplerim' }}</h4>
+  <div>
+    <div class="btn-group me-2">
+      <a href="/tickets" class="btn btn-sm {{ 'btn-secondary' if not status_filter else 'btn-outline-secondary' }}">Tümü</a>
+      <a href="/tickets?status=open" class="btn btn-sm {{ 'btn-danger' if status_filter == 'open' else 'btn-outline-danger' }}">Açık</a>
+      <a href="/tickets?status=in_progress" class="btn btn-sm {{ 'btn-warning' if status_filter == 'in_progress' else 'btn-outline-warning' }}">İşlemde</a>
+      <a href="/tickets?status=resolved" class="btn btn-sm {{ 'btn-success' if status_filter == 'resolved' else 'btn-outline-success' }}">Çözüldü</a>
+    </div>
+    <a href="/tickets/new" class="btn btn-primary btn-sm">Yeni Talep</a>
+  </div>
+</div>
+<div class="card"><div class="card-body">
+  <table class="table table-hover align-middle data-table">
+    <thead>
+      <tr><th>#</th><th>Başlık</th><th>Daire</th><th>Kategori</th><th>Öncelik</th><th>Oluşturan</th><th>Tarih</th><th>Durum</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td>{{ t.title }}</td>
+        <td>{{ t.apartment.label }}</td>
+        <td>{{ t.category_label }}</td>
+        <td>
+          <span class="badge {% if t.priority == 'high' %}text-bg-danger{% elif t.priority == 'normal' %}text-bg-secondary{% else %}text-bg-light{% endif %}">
+            {{ t.priority_label }}
+          </span>
+        </td>
+        <td>{{ t.creator.full_name }}</td>
+        <td>{{ t.created_at.strftime('%d.%m.%Y') }}</td>
+        <td>
+          <span class="badge {% if t.status == 'open' %}text-bg-danger{% elif t.status == 'in_progress' %}text-bg-warning{% elif t.status == 'resolved' %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+            {{ t.status_label }}
+          </span>
+        </td>
+        <td><a href="/tickets/{{ t.id }}" class="btn btn-sm btn-outline-primary">Detay</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

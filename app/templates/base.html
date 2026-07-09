@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ApartIo{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/2.0.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+  <link href="/static/custom.css" rel="stylesheet">
+</head>
+<body>
+{% if user %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">ApartIo</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+        {% if user.role in ('site_manager', 'building_manager') %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Yapı</a>
+            <ul class="dropdown-menu">
+              {% if user.role == 'site_manager' %}
+                <li><a class="dropdown-item" href="/sites">Siteler</a></li>
+              {% endif %}
+              <li><a class="dropdown-item" href="/blocks">Bloklar</a></li>
+              <li><a class="dropdown-item" href="/apartments">Daireler</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="/gas-subscriptions">Doğalgaz Abonelik</a></li>
+            </ul>
+          </li>
+          <li class="nav-item"><a class="nav-link" href="/residents">Malik / Kiracı</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Finans</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/dues">Aidatlar</a></li>
+              <li><a class="dropdown-item" href="/debts">Borçlar</a></li>
+              <li><a class="dropdown-item" href="/payments">Tahsilatlar</a></li>
+              <li><a class="dropdown-item" href="/expenses">Giderler</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="/reports">Raporlar</a></li>
+            </ul>
+          </li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Operasyon</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/tickets">Talepler</a></li>
+              <li><a class="dropdown-item" href="/tasks">Görevler / İş Emirleri</a></li>
+              <li><a class="dropdown-item" href="/staff">Personel</a></li>
+            </ul>
+          </li>
+          <li class="nav-item"><a class="nav-link" href="/users">Kullanıcılar</a></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="/apartments">Dairem</a></li>
+          <li class="nav-item"><a class="nav-link" href="/debts">Borçlarım</a></li>
+          <li class="nav-item"><a class="nav-link" href="/tickets">Taleplerim</a></li>
+        {% endif %}
+        <li class="nav-item"><a class="nav-link" href="/messages">Mesajlar</a></li>
+        <li class="nav-item"><a class="nav-link" href="/documents">Belgeler</a></li>
+        <li class="nav-item"><a class="nav-link" href="/announcements">Duyurular</a></li>
+      </ul>
+      <a class="nav-link text-light position-relative me-3" href="/notifications" title="Bildirimler">
+        &#128276;
+        <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"></span>
+      </a>
+      <span class="navbar-text me-3">
+        {{ user.full_name }}
+        <span class="badge text-bg-secondary ms-1">{{ user.role_label }}</span>
+      </span>
+      <a class="btn btn-outline-light btn-sm" href="/logout">Çıkış</a>
+    </div>
+  </div>
+</nav>
+{% endif %}
+<main class="container py-4">
+  {% if request.query_params.get('msg') %}
+    <div class="alert alert-success alert-dismissible fade show">
+      {{ request.query_params.get('msg') }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endif %}
+  {% if request.query_params.get('err') %}
+    <div class="alert alert-danger alert-dismissible fade show">
+      {{ request.query_params.get('err') }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/2.0.8/js/dataTables.bootstrap5.min.js"></script>
+<script>
+  document.querySelectorAll("table.data-table").forEach(function (t) {
+    new DataTable(t, {
+      pageLength: 25,
+      language: { url: "https://cdn.datatables.net/plug-ins/2.0.8/i18n/tr.json" }
+    });
+  });
+</script>
+{% if user %}
+<script>
+  fetch("/notifications/unread-count")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.count > 0) {
+        var badge = document.getElementById("notifBadge");
+        badge.textContent = d.count > 99 ? "99+" : d.count;
+        badge.classList.remove("d-none");
+      }
+    })
+    .catch(function () {});
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

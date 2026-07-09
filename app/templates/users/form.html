@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Kullanıcı Düzenle' if edit_user else 'Yeni Kullanıcı' }} — ApartIo{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card"><div class="card-body p-4">
+      <h4 class="mb-4">{{ 'Kullanıcı Düzenle' if edit_user else 'Yeni Kullanıcı' }}</h4>
+      <form method="post" action="{{ '/users/' ~ edit_user.id ~ '/edit' if edit_user else '/users/new' }}">
+        <div class="mb-3">
+          <label class="form-label">Ad Soyad</label>
+          <input type="text" class="form-control" name="full_name" value="{{ edit_user.full_name if edit_user else '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">E-posta</label>
+          <input type="email" class="form-control" name="email" value="{{ edit_user.email if edit_user else '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Telefon</label>
+          <input type="text" class="form-control" name="phone" value="{{ edit_user.phone or '' if edit_user else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Rol</label>
+          <select class="form-select" name="role" id="roleSelect" required>
+            {% for value, label in ROLE_LABELS.items() %}
+              <option value="{{ value }}" {{ 'selected' if edit_user and edit_user.role == value }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3" id="blockField">
+          <label class="form-label">Sorumlu Blok (apartman yöneticisi için)</label>
+          <select class="form-select" name="block_id">
+            <option value="">— Seçiniz —</option>
+            {% for b in blocks %}
+              <option value="{{ b.id }}" {{ 'selected' if edit_user and edit_user.block_id == b.id }}>{{ b.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Parola {{ '(boş bırakılırsa değişmez)' if edit_user }}</label>
+          <input type="password" class="form-control" name="password" {{ 'required' if not edit_user }}>
+        </div>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+        <a href="/users" class="btn btn-outline-secondary">İptal</a>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  var roleSelect = document.getElementById("roleSelect");
+  var blockField = document.getElementById("blockField");
+  function toggleBlock() {
+    blockField.style.display = roleSelect.value === "building_manager" ? "" : "none";
+  }
+  roleSelect.addEventListener("change", toggleBlock);
+  toggleBlock();
+</script>
+{% endblock %}

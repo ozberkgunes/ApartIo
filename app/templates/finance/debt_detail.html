@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Borç Detayı — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Borç Detayı</h4>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card"><div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-5">Daire</dt>
+        <dd class="col-7"><a href="/apartments/{{ debt.apartment_id }}">{{ debt.apartment.label }}</a></dd>
+        <dt class="col-5">Açıklama</dt><dd class="col-7">{{ debt.description }}</dd>
+        <dt class="col-5">Tutar</dt><dd class="col-7">{{ debt.amount | tl }}</dd>
+        <dt class="col-5">Ödenen</dt><dd class="col-7 text-success">{{ debt.paid_amount | tl }}</dd>
+        <dt class="col-5">Kalan</dt><dd class="col-7 text-danger">{{ debt.remaining | tl }}</dd>
+        <dt class="col-5">Vade</dt><dd class="col-7">{{ debt.due_date }}</dd>
+        <dt class="col-5">Durum</dt>
+        <dd class="col-7">
+          <span class="badge {% if debt.status == 'paid' %}text-bg-success{% elif debt.status == 'partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">
+            {{ debt.status_label }}
+          </span>
+        </dd>
+      </dl>
+    </div></div>
+
+    {% if user.role in ('site_manager', 'building_manager') and debt.status != 'paid' %}
+    <div class="card mt-3"><div class="card-body">
+      <h6 class="card-title">Tahsilat Kaydet</h6>
+      <form method="post" action="/debts/{{ debt.id }}/pay" class="row g-2">
+        <div class="col-4">
+          <label class="form-label">Tutar (₺)</label>
+          <input type="text" class="form-control" name="amount" value="{{ debt.remaining }}" required>
+        </div>
+        <div class="col-4">
+          <label class="form-label">Yöntem</label>
+          <select class="form-select" name="method">
+            <option value="cash">Nakit</option>
+            <option value="transfer">Havale/EFT</option>
+            <option value="card">Kart</option>
+          </select>
+        </div>
+        <div class="col-4">
+          <label class="form-label">Tarih</label>
+          <input type="date" class="form-control" name="paid_at" value="{{ today() }}" required>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-success w-100">Tahsilatı Kaydet</button>
+        </div>
+      </form>
+    </div></div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Ödemeler</h6>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Tarih</th><th class="text-end">Tutar</th><th>Yöntem</th><th>Tahsil Eden</th></tr></thead>
+        <tbody>
+          {% for p in debt.payments | sort(attribute='paid_at', reverse=true) %}
+          <tr>
+            <td>{{ p.paid_at }}</td>
+            <td class="text-end">{{ p.amount | tl }}</td>
+            <td>{{ p.method_label }}</td>
+            <td>{{ p.receiver.full_name if p.receiver else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center">Henüz ödeme yapılmadı.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ apartment.label }} — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">{{ apartment.label }}</h4>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card mb-3"><div class="card-body">
+      <h6 class="card-title">Daire Bilgileri</h6>
+      <dl class="row mb-0">
+        <dt class="col-5">Blok</dt><dd class="col-7">{{ apartment.block.full_name }}</dd>
+        <dt class="col-5">Kat</dt><dd class="col-7">{{ apartment.floor_no }}</dd>
+        <dt class="col-5">Daire No</dt><dd class="col-7">{{ apartment.number }}</dd>
+        <dt class="col-5">Alan</dt><dd class="col-7">{{ apartment.area_m2 or '—' }} m²</dd>
+        <dt class="col-5">Açık Borç</dt><dd class="col-7 text-danger">{{ apartment.open_debt_total | tl }}</dd>
+      </dl>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Malik / Kiracı</h6>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Kişi</th><th>Tip</th><th>Başlangıç</th>{% if user.role in ('site_manager', 'building_manager') %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for o in apartment.active_occupancies %}
+          <tr>
+            <td>{{ o.user.full_name }}</td>
+            <td><span class="badge text-bg-info">{{ o.type_label }}</span></td>
+            <td>{{ o.start_date }}</td>
+            {% if user.role in ('site_manager', 'building_manager') %}
+            <td class="text-end">
+              <form method="post" action="/residents/{{ o.id }}/end" class="d-inline"
+                    onsubmit="return confirm('Kayıt sonlandırılsın mı?')">
+                <button class="btn btn-sm btn-outline-danger">Sonlandır</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center">Aktif malik/kiracı kaydı yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if user.role in ('site_manager', 'building_manager') %}
+      <form method="post" action="/residents/add" class="row g-2 mt-2">
+        <input type="hidden" name="apartment_id" value="{{ apartment.id }}">
+        <div class="col-12">
+          <select class="form-select form-select-sm" name="user_id" required>
+            <option value="">— Kişi seçin —</option>
+            {% for r in residents %}
+              <option value="{{ r.id }}">{{ r.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-4">
+          <select class="form-select form-select-sm" name="occ_type" required>
+            <option value="owner">Malik</option>
+            <option value="tenant">Kiracı</option>
+          </select>
+        </div>
+        <div class="col-5">
+          <input type="date" class="form-control form-control-sm" name="start_date" value="{{ today() }}" required>
+        </div>
+        <div class="col-3">
+          <button type="submit" class="btn btn-sm btn-primary w-100">Ekle</button>
+        </div>
+      </form>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Borçlar</h6>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th><th></th></tr></thead>
+        <tbody>
+          {% for d in apartment.debts | sort(attribute='due_date', reverse=true) %}
+          <tr>
+            <td>{{ d.description }}</td>
+            <td class="text-end">{{ d.amount | tl }}</td>
+            <td class="text-end">{{ d.remaining | tl }}</td>
+            <td>{{ d.due_date }}</td>
+            <td>
+              <span class="badge {% if d.status == 'paid' %}text-bg-success{% elif d.status == 'partial' %}text-bg-warning{% else %}text-bg-danger{% endif %}">
+                {{ d.status_label }}
+              </span>
+            </td>
+            <td><a href="/debts/{{ d.id }}" class="btn btn-sm btn-outline-primary">Detay</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted text-center">Borç kaydı yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

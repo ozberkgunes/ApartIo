@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ApartIo{% endblock %}
+{% block content %}
+{% if user.role in ('site_manager', 'building_manager') %}
+  <h4 class="mb-4">Genel Durum</h4>
+
+  {% for sp in surcharge_proposals %}
+  <div class="alert alert-warning">
+    <strong>Ek aidat önerisi — {{ sp.site.name }} ({{ sp.period }}):</strong>
+    giderler aidat tahakkukunu {{ sp.deficit | tl }} aştı; daire başına {{ sp.per_apartment | tl }} ek aidat önerilir.
+    <a href="/dues" class="alert-link">Aidat Yönetimi'nde incele</a>
+  </div>
+  {% endfor %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Daire Sayısı</div>
+        <div class="kpi-value">{{ apartment_count }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Aktif Sakin</div>
+        <div class="kpi-value">{{ resident_count }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Aktif Açık Borç</div>
+        <div class="kpi-value text-danger">{{ open_total | tl }}</div>
+        {% if future_total %}
+        <div class="small text-muted">+ {{ future_total | tl }} <a href="/debts?timing=future" class="text-decoration-none">ileri tarihli</a></div>
+        {% endif %}
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Bu Ay Tahsilat / Gider</div>
+        <div class="kpi-value">
+          <span class="text-success">{{ month_income | tl }}</span>
+          <small class="text-muted">/ {{ month_expense | tl }}</small>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-8">
+      <div class="card h-100"><div class="card-body">
+        <h6 class="card-title">Son 6 Ay Gelir / Gider</h6>
+        <canvas id="chartIncomeExpense" height="110"></canvas>
+      </div></div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100"><div class="card-body">
+        <h6 class="card-title">Borç Durumu</h6>
+        <canvas id="chartDebtStatus" height="220"></canvas>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title">Açık Borçlar (son 10)</h6>
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Daire</th><th>Açıklama</th><th class="text-end">Kalan</th><th>Vade</th><th></th></tr></thead>
+          <tbody>
+            {% for d in open_debts %}
+            <tr>
+              <td>{{ d.apartment.label }}</td>
+              <td>{{ d.description }}</td>
+              <td class="text-end">{{ d.remaining | tl }}</td>
+              <td>{{ d.due_date }}</td>
+              <td><a href="/debts/{{ d.id }}" class="btn btn-sm btn-outline-primary">Detay</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted text-center">Açık borç yok 🎉</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title">Son Duyurular</h6>
+        {% for a in announcements %}
+          <div class="border-bottom py-2">
+            <strong>{{ a.title }}</strong>
+            <span class="badge text-bg-light">{{ a.scope_label }}</span>
+            <div class="small text-muted">{{ a.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+          </div>
+        {% else %}
+          <p class="text-muted">Henüz duyuru yok.</p>
+        {% endfor %}
+      </div></div>
+    </div>
+  </div>
+{% else %}
+  <h4 class="mb-4">Hoş geldiniz, {{ user.full_name }}</h4>
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Aktif Açık Borcunuz</div>
+        <div class="kpi-value text-danger">{{ open_total | tl }}</div>
+        {% if future_total %}
+        <div class="small text-muted">+ {{ future_total | tl }} <a href="/debts?timing=future" class="text-decoration-none">ileri tarihli</a></div>
+        {% endif %}
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Toplam Ödemeniz</div>
+        <div class="kpi-value text-success">{{ paid_total | tl }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Daireniz</div>
+        {% for a in apartments %}
+          <div>{{ a.label }}</div>
+        {% else %}
+          <div class="text-muted">Kayıtlı daire yok</div>
+        {% endfor %}
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title">Borçlarım</h6>
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th></tr></thead>
+          <tbody>
+            {% for d in debts %}
+            <tr>
+              <td><a href="/debts/{{ d.id }}">{{ d.description }}</a></td>
+              <td class="text-end">{{ d.amount | tl }}</td>
+              <td class="text-end">{{ d.remaining | tl }}</td>
+              <td>{{ d.due_date }}</td>
+              <td>
+                <span class="badge {% if d.status == 'paid' %}text-bg-success{% elif d.status == 'partial' %}text-bg-warning{% elif d.is_future %}text-bg-secondary{% else %}text-bg-danger{% endif %}">
+                  {{ d.status_label }}
+                </span>
+                {% if d.is_future %}<span class="badge text-bg-info">İleri Tarihli</span>{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted text-center">Borcunuz bulunmuyor 🎉</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title">Duyurular</h6>
+        {% for a in announcements %}
+          <div class="border-bottom py-2">
+            <strong>{{ a.title }}</strong>
+            <div class="small">{{ a.body }}</div>
+            <div class="small text-muted">{{ a.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+          </div>
+        {% else %}
+          <p class="text-muted">Henüz duyuru yok.</p>
+        {% endfor %}
+      </div></div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if user.role in ('site_manager', 'building_manager') %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  new Chart(document.getElementById("chartIncomeExpense"), {
+    type: "bar",
+    data: {
+      labels: {{ months | tojson }},
+      datasets: [
+        { label: "Gelir", data: {{ income_values | tojson }}, backgroundColor: "#198754" },
+        { label: "Gider", data: {{ expense_values | tojson }}, backgroundColor: "#dc3545" }
+      ]
+    },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+  });
+  new Chart(document.getElementById("chartDebtStatus"), {
+    type: "doughnut",
+    data: {
+      labels: ["Bekliyor", "Kısmi", "Ödendi"],
+      datasets: [{
+        data: [
+          {{ status_counts['pending'] }},
+          {{ status_counts['partial'] }},
+          {{ status_counts['paid'] }}
+        ],
+        backgroundColor: ["#dc3545", "#ffc107", "#198754"]
+      }]
+    },
+    options: { responsive: true }
+  });
+</script>
+{% endif %}
+{% endblock %}

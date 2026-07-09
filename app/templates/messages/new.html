@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Yeni Mesaj — ApartIo{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card"><div class="card-body p-4">
+      <h4 class="mb-4">Yeni Mesaj</h4>
+      <form method="post" action="/messages/new">
+        <div class="mb-3">
+          <label class="form-label">Alıcı</label>
+          <select class="form-select" name="recipient_id" required>
+            <option value="">— Seçiniz —</option>
+            {% for r in recipients %}
+              <option value="{{ r.id }}">{{ r.full_name }} ({{ r.role_label }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Konu</label>
+          <input type="text" class="form-control" name="subject" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Mesaj</label>
+          <textarea class="form-control" name="body" rows="4" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Gönder</button>
+        <a href="/messages" class="btn btn-outline-secondary">İptal</a>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

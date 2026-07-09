@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Giderler — ApartIo{% endblock %}
+{% block content %}
+<h4 class="mb-3">Gider Yönetimi</h4>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h6 class="card-title">Yeni Gider</h6>
+      <form method="post" action="/expenses/new">
+        {% if user.role == 'site_manager' %}
+        <div class="mb-3">
+          <label class="form-label">Kapsam</label>
+          <select class="form-select" name="scope" required>
+            {% for opt in scope_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <p class="text-muted small">Gider, sorumlu olduğunuz blok ({{ user.block.full_name if user.block }}) için kaydedilir.</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Kategori</label>
+          <select class="form-select" name="category" required>
+            <option>Temizlik</option>
+            <option>Elektrik</option>
+            <option>Su</option>
+            <option>Doğalgaz</option>
+            <option>Bakım/Onarım</option>
+            <option>Güvenlik</option>
+            <option>Personel</option>
+            <option>Diğer</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Tutar (₺)</label>
+          <input type="text" class="form-control" name="amount" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Tarih</label>
+          <input type="date" class="form-control" name="expense_date" value="{{ today() }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Açıklama</label>
+          <input type="text" class="form-control" name="description">
+        </div>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <table class="table table-hover align-middle data-table">
+        <thead>
+          <tr><th>Tarih</th><th>Kapsam</th><th>Kategori</th><th class="text-end">Tutar</th><th>Açıklama</th>{% if user.role == 'site_manager' %}<th></th>{% endif %}</tr>
+        </thead>
+        <tbody>
+          {% for e in expenses %}
+          <tr>
+            <td>{{ e.expense_date }}</td>
+            <td>{{ e.scope_label }}</td>
+            <td>{{ e.category }}</td>
+            <td class="text-end">{{ e.amount | tl }}</td>
+            <td>{{ e.description or '—' }}</td>
+            {% if user.role == 'site_manager' %}
+            <td class="text-end">
+              <form method="post" action="/expenses/{{ e.id }}/delete"
+                    onsubmit="return confirm('Bu gider silinsin mi?')">
+                <button class="btn btn-sm btn-outline-danger">Sil</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
