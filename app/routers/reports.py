@@ -1,21 +1,27 @@
 import csv
 import io
-from datetime import date
+import os
+import sqlite3
+import tempfile
+from datetime import date, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from .. import models, scoping
 from ..auth import require_role
-from ..database import get_db
+from ..config import MAX_UPLOAD_SIZE
+from ..database import engine, get_db
 from ..models import ROLE_BUILDING_MANAGER, ROLE_SITE_MANAGER
 from ..templating import templates
 
 router = APIRouter()
 
 managers_only = require_role(ROLE_SITE_MANAGER, ROLE_BUILDING_MANAGER)
+site_manager_only = require_role(ROLE_SITE_MANAGER)
 
 
 def _default_range() -> tuple[date, date]:
@@ -170,3 +176,64 @@ def export_csv(
             "giderler.csv", ["Tarih", "Kapsam", "Kategori", "Tutar", "Açıklama"], rows
         )
     raise HTTPException(404, "Geçersiz rapor türü")
+
+
+@router.get("/reports/export-db")
+def export_database(user: models.User = Depends(site_manager_only)):
+    if engine.url.get_backend_name() != "sqlite":
+        raise HTTPException(404, "Veritabanı dosyası yalnızca SQLite kullanımında indirilebilir.")
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    source = sqlite3.connect(engine.url.database)
+    try:
+        # Doğrudan dosya kopyası yerine backup API: yazma ortasında bile tutarlı kopya verir
+        with sqlite3.connect(tmp_path) as target:
+            source.backup(target)
+    finally:
+        source.close()
+    return FileResponse(
+        tmp_path,
+        filename=f"apartio-{datetime.now().strftime('%Y-%m-%d-%H%M')}.db",
+        media_type="application/octet-stream",
+        background=BackgroundTask(os.unlink, tmp_path),
+    )
+
+
+REQUIRED_TABLES = {"users", "sites", "apartments", "debts", "payments"}
+
+
+@router.post("/reports/import-db")
+async def import_database(
+    file: UploadFile = File(...),
+    user: models.User = Depends(site_manager_only),
+):
+    if engine.url.get_backend_name() != "sqlite":
+        raise HTTPException(400, "Geri yükleme yalnızca SQLite kullanımında yapılabilir.")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(400, "Dosya 10 MB sınırını aşıyor.")
+    if not data.startswith(b"SQLite format 3\x00"):
+        raise HTTPException(400, "Dosya geçerli bir SQLite veritabanı değil.")
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(data)
+        source = sqlite3.connect(tmp_path)
+        try:
+            if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise HTTPException(400, "Dosya bozuk: bütünlük denetimi başarısız.")
+            tables = {r[0] for r in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not REQUIRED_TABLES <= tables:
+                raise HTTPException(400, "Dosya bir ApartIo veritabanına benzemiyor.")
+            with sqlite3.connect(engine.url.database) as target:
+                source.backup(target)
+        finally:
+            source.close()
+    finally:
+        os.unlink(tmp_path)
+
+    # Havuzdaki eski bağlantılar yeni veriyi görmesin diye sıfırlanır
+    engine.dispose()
+    return RedirectResponse("/?imported=1", status_code=303)

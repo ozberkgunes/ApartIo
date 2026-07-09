@@ -4,6 +4,29 @@
 {% if user.role in ('site_manager', 'building_manager') %}
   <h4 class="mb-4">Genel Durum</h4>
 
+  {% if request.query_params.get('imported') %}
+  <div class="alert alert-success">Veritabanı yedekten geri yüklendi.</div>
+  {% endif %}
+
+  {% if user.role == 'site_manager' %}
+  <div class="card mb-4"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+    <div class="me-auto">
+      <h6 class="mb-1">Veri Yedekleme</h6>
+      <div class="small text-muted">
+        Verinin son güncellenmesi:
+        {% if db_last_modified %}{{ db_last_modified.strftime('%d.%m.%Y %H:%M') }}{% else %}bilinmiyor{% endif %}
+      </div>
+    </div>
+    <a href="/reports/export-db" class="btn btn-outline-primary">Veriyi İndir</a>
+    <form method="post" action="/reports/import-db" enctype="multipart/form-data"
+          class="d-flex flex-wrap gap-2"
+          onsubmit="return confirm('DİKKAT: Mevcut tüm veriler, yüklenen dosyadaki verilerle DEĞİŞTİRİLECEK. Devam edilsin mi?')">
+      <input type="file" name="file" accept=".db" class="form-control" required style="max-width: 280px">
+      <button class="btn btn-outline-danger">Yedekten Geri Yükle</button>
+    </form>
+  </div></div>
+  {% endif %}
+
   {% for sp in surcharge_proposals %}
   <div class="alert alert-warning">
     <strong>Ek aidat önerisi — {{ sp.site.name }} ({{ sp.period }}):</strong>
