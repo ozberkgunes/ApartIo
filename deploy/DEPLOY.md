@@ -165,17 +165,40 @@ git reset --hard origin/main
 > `Host github.com` / `IdentityFile /root/.ssh/apartio_deploy` satırlarını
 > yazın ve remote'u `git@github.com:ozberkgunes/ApartIo.git` yapın.
 
-Test: `bash /projects/ApartIo/deploy/update.sh` elle çalışmalı.
+### B. deploy kullanıcısı + Actions'ın SSH erişimi (bir kez)
 
-### B. Actions'ın SSH erişimi (bir kez)
-
-Sunucuda Actions'a özel bir anahtar üretin ve yetkilendirin:
+Actions sunucuya root ile değil, yetkisi tek işe indirilmiş `deploy`
+kullanıcısıyla bağlanır: kod ve venv `deploy`'a aittir, `uploads/`
+www-data'da kalır (uygulama yazar), sudo yalnız `systemctl restart apartio`
+komutuna izinlidir. Anahtar sızsa bile shell yetkisi "deploy tetiklemek"le
+sınırlı kalır.
 
 ```bash
+# 1) Kullanıcı + SSH anahtarı
+adduser --disabled-password --gecos "" deploy
+usermod -aG systemd-journal deploy      # status çıktısında loglar görünsün
+install -m 700 -o deploy -g deploy -d /home/deploy/.ssh
 ssh-keygen -t ed25519 -f /root/.ssh/github_actions -N "" -C "github-actions-deploy"
-cat /root/.ssh/github_actions.pub >> /root/.ssh/authorized_keys
-cat /root/.ssh/github_actions    # private key — aşağıdaki SSH_KEY secret'ı
+install -m 600 -o deploy -g deploy /root/.ssh/github_actions.pub /home/deploy/.ssh/authorized_keys
+cat /root/.ssh/github_actions           # private key — aşağıdaki SSH_KEY secret'ı
+
+# 2) Sahiplik: kod deploy'un, uploads www-data'nın, .env.prod yalnız deploy okur
+chown -R deploy:deploy /projects/ApartIo
+chown -R www-data:www-data /projects/ApartIo/uploads
+chown deploy:deploy /projects/ApartIo/.env.prod && chmod 600 /projects/ApartIo/.env.prod
+sudo -u deploy git config --global --add safe.directory /projects/ApartIo
+
+# 3) Sınırlı sudo: deploy yalnız apartio servisini yeniden başlatabilir
+echo 'deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart apartio' > /etc/sudoers.d/apartio-deploy
+chmod 440 /etc/sudoers.d/apartio-deploy
 ```
+
+> `.env.prod`'u systemd (`EnvironmentFile`) root olarak okuduğundan servis
+> etkilenmez; `update.sh` ise migration için dosyayı `deploy` olarak source
+> eder. `git reset` sonrası yeni dosyalar umask gereği herkese okunur
+> oluştuğundan www-data kodu okumaya devam eder — ayrıca `chown` gerekmez.
+
+Test: `sudo -u deploy bash /projects/ApartIo/deploy/update.sh` elle çalışmalı.
 
 GitHub'da **ApartIo → Settings → Secrets and variables → Actions →
 New repository secret** ile üç secret ekleyin:
@@ -183,8 +206,13 @@ New repository secret** ile üç secret ekleyin:
 | Secret     | Değer                                                   |
 | ---------- | ------------------------------------------------------- |
 | `SSH_HOST` | sunucu IP'si                                            |
-| `SSH_USER` | `root`                                                  |
+| `SSH_USER` | `deploy`                                                |
 | `SSH_KEY`  | `/root/.ssh/github_actions` dosyasının TAMAMI (private) |
+
+> İsteğe bağlı sıkılaştırma: artık root ile SSH gerekmediğinden
+> `/etc/ssh/sshd_config`'de `PermitRootLogin no` yapılabilir — ama önce
+> FileZilla/SSH erişiminizi `deploy` veya başka bir kullanıcıya taşıdığınızdan
+> emin olun, yoksa sunucuya erişiminiz kapanır.
 
 ### C. Kullanım
 
@@ -192,7 +220,7 @@ Yerelde commit + `git push` yeterli. GitHub'da **Actions** sekmesinden
 çalışmayı izleyin; yeşilse sunucu güncellenmiştir. Acil durumda elle:
 
 ```bash
-bash /projects/ApartIo/deploy/update.sh
+sudo -u deploy bash /projects/ApartIo/deploy/update.sh
 ```
 
 > Not: `update.sh` sunucudaki takipli dosyaları `git reset --hard` ile
