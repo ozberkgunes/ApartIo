@@ -57,6 +57,7 @@ def list_debts(
         scoping.scoped_apartments(db, user) if user.role in models.MANAGER_ROLES else []
     )
     options = scope_options(db) if user.role == ROLE_SITE_MANAGER else []
+    late_fees = {d.id: fee for d in debts if (fee := finance_service.late_fee_billable(d)) > 0}
     return templates.TemplateResponse(
         request,
         "finance/debts.html",
@@ -70,6 +71,7 @@ def list_debts(
             "q_filter": q,
             "category_labels": models.DEBT_CATEGORY_LABELS,
             "scope_options": options,
+            "late_fees": late_fees,
         },
     )
 
@@ -185,6 +187,33 @@ def create_bulk_debts(
     return RedirectResponse(f"/debts?msg={msg}", status_code=303)
 
 
+@router.post("/debts/late-fees/apply")
+def apply_late_fees_bulk(
+    user: models.User = Depends(managers_only),
+    db: Session = Depends(get_db),
+):
+    debts = scoping.scoped_debts(db, user)
+    created = finance_service.apply_late_fees(db, debts)
+    responsible_ids = {
+        uid
+        for fee in created
+        if (uid := notify_service.responsible_user_id(fee.apartment, fee.bill_to_owner))
+    }
+    if responsible_ids:
+        notify_service.notify(
+            db,
+            responsible_ids,
+            "Gecikme tazminatı tahakkuku",
+            "Vadesi geçen borçlarınıza gecikme tazminatı tahakkuk ettirildi (KMK m.20, aylık %5).",
+            link="/debts",
+        )
+    if not created:
+        return RedirectResponse("/debts?msg=Tahakkuk edilecek gecikme tazminatı yok", status_code=303)
+    return RedirectResponse(
+        f"/debts?msg={len(created)} borca gecikme tazminatı tahakkuk ettirildi", status_code=303
+    )
+
+
 @router.get("/debts/{debt_id}")
 def debt_detail(
     debt_id: int,
@@ -198,7 +227,45 @@ def debt_detail(
     if not scoping.can_access_apartment(db, user, debt.apartment):
         raise HTTPException(403, "Bu borca erişim yetkiniz yok.")
     return templates.TemplateResponse(
-        request, "finance/debt_detail.html", {"user": user, "debt": debt}
+        request,
+        "finance/debt_detail.html",
+        {
+            "user": user,
+            "debt": debt,
+            "late_fee_accrued": finance_service.late_fee_accrued(debt),
+            "late_fee_billed": finance_service.late_fee_billed(debt),
+            "late_fee_billable": finance_service.late_fee_billable(debt),
+        },
+    )
+
+
+@router.post("/debts/{debt_id}/late-fee")
+def apply_late_fee(
+    debt_id: int,
+    user: models.User = Depends(managers_only),
+    db: Session = Depends(get_db),
+):
+    debt = db.get(models.Debt, debt_id)
+    if debt is None:
+        raise HTTPException(404, "Borç bulunamadı")
+    if not scoping.can_access_apartment(db, user, debt.apartment):
+        raise HTTPException(403, "Bu borca erişim yetkiniz yok.")
+    fee = finance_service.apply_late_fee(db, debt)
+    if fee is None:
+        return RedirectResponse(
+            f"/debts/{debt_id}?err=Tahakkuk edilecek gecikme tazminatı yok", status_code=303
+        )
+    if uid := notify_service.responsible_user_id(fee.apartment, fee.bill_to_owner):
+        notify_service.notify(
+            db,
+            [uid],
+            "Gecikme tazminatı tahakkuku",
+            f"{debt.description} borcunuza {fee.amount} ₺ gecikme tazminatı "
+            "tahakkuk ettirildi (KMK m.20, aylık %5).",
+            link=f"/debts/{fee.id}",
+        )
+    return RedirectResponse(
+        f"/debts/{debt_id}?msg=Gecikme tazminatı tahakkuk ettirildi", status_code=303
     )
 
 

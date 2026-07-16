@@ -73,9 +73,12 @@ chmod 600 /projects/ApartIo/.env.prod
 cd /projects/ApartIo
 set -a && source .env.prod && set +a
 .venv/bin/python create_admin.py
+.venv/bin/alembic stamp head    # taze kurulumda şema günceldir; migration geçmişini işaretle
 ```
 
-E-posta, ad soyad ve şifre sorulur; tablolar otomatik oluşur.
+E-posta, ad soyad ve şifre sorulur; tablolar otomatik oluşur. `alembic stamp head`
+yalnız sıfırdan kurulumda gerekir — sonraki şema değişikliklerini `update.sh`
+içindeki `alembic upgrade head` uygular.
 
 ## 7. uploads klasörü ve sahiplik
 
@@ -128,23 +131,73 @@ journalctl -u apartio -n 50 --no-pager   # uygulama logları
 tail -50 /var/log/nginx/error.log        # nginx logları
 ```
 
-## Güncelleme (yeni sürüm yükleme)
+## Güncelleme (git + GitHub Actions ile otomatik)
 
-Şimdilik git kullanılmadığı için güncelleme FileZilla ile yapılır:
+Hedef: yerelde `git push` → GitHub Actions sunucuya SSH'lanır →
+`deploy/update.sh` çalışır (git fetch/reset + pip install + **alembic upgrade** + restart).
+Workflow dosyası repoda: `.github/workflows/deploy.yml`.
 
-1. Değişen dosyaları FileZilla ile `/projects/ApartIo` altına yükleyin
-   (genelde sadece `app/` içeriği; `.env.prod` ve `uploads/`'a dokunmayın).
-2. Sunucuda:
+> Şema değişiklikleri Alembic migration'larıyla gelir (`migrations/versions/`);
+> `update.sh` bunları `alembic upgrade head` ile PostgreSQL'e otomatik uygular.
+> Mevcut (Alembic öncesi kurulmuş) veritabanında ilk `upgrade head` doğrudan
+> çalışır — ilk migration eksik kolonu tespit edip ekler, tablo zaten
+> güncelse kendini atlar.
+
+### A. Sunucuyu repoya bağla (bir kez)
+
+Mevcut `/projects/ApartIo` klasörü silinmeden repoya bağlanır;
+`.env.prod` ve `uploads/` gitignore'da olduğu için etkilenmez:
 
 ```bash
+apt install -y git
 cd /projects/ApartIo
-.venv/bin/pip install -q -r requirements.txt   # sadece requirements.txt değiştiyse
-chown -R www-data:www-data /projects/ApartIo
-systemctl restart apartio
+git init -b main
+git remote add origin https://github.com/ozberkgunes/ApartIo.git
+git config --global --add safe.directory /projects/ApartIo
+git fetch origin
+git reset --hard origin/main
 ```
 
-> Git'e geçildikten sonra bu adımların hepsi tek komut olacak:
-> `bash /projects/ApartIo/deploy/update.sh` (git pull + pip install + restart).
+> Repo **private** ise `https://...` yerine SSH kullanın: salt-okunur bir
+> deploy key oluşturun — `ssh-keygen -t ed25519 -f /root/.ssh/apartio_deploy -N ""`
+> deyip `.pub` içeriğini GitHub'da **Settings → Deploy keys**'e ekleyin
+> ("Allow write access" işaretlemeyin), `/root/.ssh/config`'e
+> `Host github.com` / `IdentityFile /root/.ssh/apartio_deploy` satırlarını
+> yazın ve remote'u `git@github.com:ozberkgunes/ApartIo.git` yapın.
+
+Test: `bash /projects/ApartIo/deploy/update.sh` elle çalışmalı.
+
+### B. Actions'ın SSH erişimi (bir kez)
+
+Sunucuda Actions'a özel bir anahtar üretin ve yetkilendirin:
+
+```bash
+ssh-keygen -t ed25519 -f /root/.ssh/github_actions -N "" -C "github-actions-deploy"
+cat /root/.ssh/github_actions.pub >> /root/.ssh/authorized_keys
+cat /root/.ssh/github_actions    # private key — aşağıdaki SSH_KEY secret'ı
+```
+
+GitHub'da **ApartIo → Settings → Secrets and variables → Actions →
+New repository secret** ile üç secret ekleyin:
+
+| Secret     | Değer                                                   |
+| ---------- | ------------------------------------------------------- |
+| `SSH_HOST` | sunucu IP'si                                            |
+| `SSH_USER` | `root`                                                  |
+| `SSH_KEY`  | `/root/.ssh/github_actions` dosyasının TAMAMI (private) |
+
+### C. Kullanım
+
+Yerelde commit + `git push` yeterli. GitHub'da **Actions** sekmesinden
+çalışmayı izleyin; yeşilse sunucu güncellenmiştir. Acil durumda elle:
+
+```bash
+bash /projects/ApartIo/deploy/update.sh
+```
+
+> Not: `update.sh` sunucudaki takipli dosyaları `git reset --hard` ile
+> GitHub'daki hale eşitler — sunucuda koda elle dokunmayın, değişiklik
+> her zaman yerelden push'lanmalı. `.env.prod` ve `uploads/` etkilenmez.
 
 ## 12. Domain + HTTPS (Let's Encrypt)
 
@@ -193,6 +246,4 @@ Sertifika 90 günlüktür; `certbot.timer` otomatik yeniler, elle işlem gerekme
 
 ## Sonrası (henüz yapılmadı)
 
-- Git'e geçiş: repo GitHub'a push'lanınca kod `git clone` ile çekilecek,
-  güncellemeler `deploy/update.sh` ile yapılacak
 - Yedekleme: cron ile günlük `pg_dump apartio`

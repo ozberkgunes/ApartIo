@@ -9,6 +9,10 @@
         <dt class="col-5">Daire</dt>
         <dd class="col-7"><a href="/apartments/{{ debt.apartment_id }}">{{ debt.apartment.label }}</a></dd>
         <dt class="col-5">Açıklama</dt><dd class="col-7">{{ debt.description }}</dd>
+        {% if debt.source_debt %}
+        <dt class="col-5">Kaynak Borç</dt>
+        <dd class="col-7"><a href="/debts/{{ debt.source_debt_id }}">{{ debt.source_debt.description }}</a></dd>
+        {% endif %}
         <dt class="col-5">Tutar</dt><dd class="col-7">{{ debt.amount | tl }}</dd>
         <dt class="col-5">Ödenen</dt><dd class="col-7 text-success">{{ debt.paid_amount | tl }}</dd>
         <dt class="col-5">Kalan</dt><dd class="col-7 text-danger">{{ debt.remaining | tl }}</dd>
@@ -21,6 +25,32 @@
         </dd>
       </dl>
     </div></div>
+
+    {% if debt.category != 'gecikme' and (late_fee_accrued > 0 or late_fee_billed > 0) %}
+    <div class="card mt-3"><div class="card-body">
+      <h6 class="card-title">Gecikme Tazminatı (KMK m.20 — aylık %5)</h6>
+      <dl class="row mb-0">
+        <dt class="col-5">Birikmiş</dt><dd class="col-7">{{ late_fee_accrued | tl }}</dd>
+        <dt class="col-5">Tahakkuk Edilmiş</dt><dd class="col-7">{{ late_fee_billed | tl }}</dd>
+        <dt class="col-5">Kesilebilir</dt>
+        <dd class="col-7 {{ 'text-danger' if late_fee_billable > 0 else 'text-muted' }}">{{ late_fee_billable | tl }}</dd>
+      </dl>
+      {% if debt.late_fee_debts %}
+      <div class="small text-muted mt-2">
+        Tahakkuklar:
+        {% for f in debt.late_fee_debts %}
+        <a href="/debts/{{ f.id }}">{{ f.due_date }} — {{ f.amount | tl }}</a>{{ ", " if not loop.last }}
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if user.role in ('site_manager', 'building_manager') and late_fee_billable > 0 %}
+      <form method="post" action="/debts/{{ debt.id }}/late-fee" class="mt-2"
+            onsubmit="return confirm('{{ late_fee_billable | tl }} gecikme tazminatı ayrı borç olarak tahakkuk ettirilecek. Devam edilsin mi?')">
+        <button type="submit" class="btn btn-outline-danger w-100">Gecikme Tazminatı Tahakkuk Et</button>
+      </form>
+      {% endif %}
+    </div></div>
+    {% endif %}
 
     {% if user.role in ('site_manager', 'building_manager') and debt.status != 'paid' %}
     <div class="card mt-3"><div class="card-body">

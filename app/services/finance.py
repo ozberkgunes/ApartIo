@@ -15,12 +15,14 @@ from ..models import (
     Expense,
     Site,
     DEBT_CAT_AIDAT,
+    DEBT_CAT_GECIKME,
     DEBT_PAID,
     DEBT_PARTIAL,
     DEBT_PENDING,
 )
 
 SURCHARGE_DAY = 20  # ek aidat önerisi ayın bu gününden sonra yapılır (KMK m.20)
+LATE_FEE_MONTHLY_RATE = Decimal("0.05")  # gecikme tazminatı: aylık %5 (KMK m.20)
 
 
 def generate_debts_for_dues(db: Session, dues: DuesDefinition) -> list[Debt]:
@@ -68,6 +70,83 @@ def update_debt_status(db: Session, debt: Debt) -> None:
     else:
         debt.status = DEBT_PENDING
     db.commit()
+
+
+def _add_months(d: date, n: int) -> date:
+    """Gün kısıtlamalı ay ekleme: 31 Oca + 1 ay → 28/29 Şub."""
+    month_index = d.year * 12 + (d.month - 1) + n
+    year, month = divmod(month_index, 12)
+    month += 1
+    next_month_start = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    last_day = (next_month_start - timedelta(days=1)).day
+    return date(year, month, min(d.day, last_day))
+
+
+def late_fee_accrued(debt: Debt, today: date | None = None) -> Decimal:
+    """Birikmiş gecikme tazminatı (KMK m.20): tamamlanmış her gecikme ayı için,
+    ay dönümü itibarıyla hâlâ ödenmemiş anapara × aylık %5.
+
+    Ay içi ödeme o ayın matrahını düşürür (borçlu lehine yorum); kısmi ay için
+    tazminat işlemez. Gecikme borçlarının kendisine tazminat işlemez.
+    """
+    if debt.category == DEBT_CAT_GECIKME:
+        return Decimal("0.00")
+    today = today or date.today()
+    total = Decimal("0")
+    month = 1
+    while True:
+        month_end = _add_months(debt.due_date, month)
+        if month_end > today:
+            break
+        outstanding = debt.amount - sum(
+            (p.amount for p in debt.payments if p.paid_at <= month_end), Decimal("0")
+        )
+        if outstanding > 0:
+            total += outstanding * LATE_FEE_MONTHLY_RATE
+        month += 1
+    return total.quantize(Decimal("0.01"))
+
+
+def late_fee_billed(debt: Debt) -> Decimal:
+    return sum((f.amount for f in debt.late_fee_debts), Decimal("0"))
+
+
+def late_fee_billable(debt: Debt, today: date | None = None) -> Decimal:
+    return max(late_fee_accrued(debt, today) - late_fee_billed(debt), Decimal("0.00"))
+
+
+def apply_late_fee(db: Session, debt: Debt, today: date | None = None) -> Debt | None:
+    """Kesilebilir gecikme tazminatını ayrı borç olarak tahakkuk ettirir.
+
+    Kesilebilir tutar = birikmiş − daha önce kesilmiş; sıfırsa None döner,
+    bu yüzden art arda çağrılar mükerrer borç üretmez.
+    """
+    created = apply_late_fees(db, [debt], today)
+    return created[0] if created else None
+
+
+def apply_late_fees(db: Session, debts: list[Debt], today: date | None = None) -> list[Debt]:
+    """Toplu tahakkuk: kesilebilir tutarı olan her borca gecikme borcu açar."""
+    created: list[Debt] = []
+    for debt in debts:
+        amount = late_fee_billable(debt, today)
+        if amount <= 0:
+            continue
+        fee = Debt(
+            apartment_id=debt.apartment_id,
+            # ilişki üzerinden bağla ki debt.late_fee_debts aynı oturumda da güncel kalsın
+            source_debt=debt,
+            description=f"Gecikme tazminatı (KMK m.20): {debt.description}",
+            amount=amount,
+            due_date=today or date.today(),
+            status=DEBT_PENDING,
+            category=DEBT_CAT_GECIKME,
+            bill_to_owner=debt.bill_to_owner,
+        )
+        db.add(fee)
+        created.append(fee)
+    db.commit()
+    return created
 
 
 def _month_bounds(period: str) -> tuple[date, date]:

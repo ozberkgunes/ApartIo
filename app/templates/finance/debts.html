@@ -30,6 +30,12 @@
              placeholder="İsim veya daire ara">
       <button class="btn btn-sm btn-outline-primary">Ara</button>
     </form>
+    <form method="post" action="/debts/late-fees/apply"
+          onsubmit="return confirm('Kapsamınızdaki vadesi geçmiş tüm borçlara birikmiş gecikme tazminatı (KMK m.20, aylık %5) tahakkuk ettirilecek. Devam edilsin mi?')">
+      <button class="btn btn-sm btn-outline-danger" title="Vadesi geçen borçlara aylık %5 gecikme tazminatı keser">
+        Gecikme Tazminatı Tahakkuk Et
+      </button>
+    </form>
     {% endif %}
   </div>
 </div>
@@ -130,7 +136,7 @@
 <div class="card"><div class="card-body">
   <table class="table table-hover align-middle data-table">
     <thead>
-      <tr><th>Daire</th>{% if user.role in ('site_manager', 'building_manager') %}<th>Sorumlu</th>{% endif %}<th>Kategori</th><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Ödenen</th><th class="text-end">Kalan</th><th>Vade</th><th>Durum</th><th></th></tr>
+      <tr><th>Daire</th>{% if user.role in ('site_manager', 'building_manager') %}<th>Sorumlu</th>{% endif %}<th>Kategori</th><th>Açıklama</th><th class="text-end">Tutar</th><th class="text-end">Ödenen</th><th class="text-end">Kalan</th><th class="text-end" title="Kesilebilir gecikme tazminatı (KMK m.20, aylık %5)">Gecikme</th><th>Vade</th><th>Durum</th><th></th></tr>
     </thead>
     <tbody>
       {% for d in debts %}
@@ -147,6 +153,13 @@
         <td class="text-end">{{ d.amount | tl }}</td>
         <td class="text-end">{{ d.paid_amount | tl }}</td>
         <td class="text-end">{{ d.remaining | tl }}</td>
+        <td class="text-end">
+          {% if late_fees.get(d.id) %}
+          <span class="text-danger">{{ late_fees[d.id] | tl }}</span>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
         <td>{{ d.due_date }}</td>
         <td>
           <span class="badge {% if d.status == 'paid' %}text-bg-success{% elif d.status == 'partial' %}text-bg-warning{% elif d.is_future %}text-bg-secondary{% else %}text-bg-danger{% endif %}">

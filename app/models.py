@@ -30,12 +30,14 @@ DEBT_CAT_AIDAT = "aidat"
 DEBT_CAT_DEMIRBAS = "demirbas"
 DEBT_CAT_DOGALGAZ = "dogalgaz"
 DEBT_CAT_DOGALGAZ_AVANS = "dogalgaz_avans"
+DEBT_CAT_GECIKME = "gecikme"
 DEBT_CAT_OTHER = "other"
 DEBT_CATEGORY_LABELS = {
     DEBT_CAT_AIDAT: "Aidat",
     DEBT_CAT_DEMIRBAS: "Demirbaş",
     DEBT_CAT_DOGALGAZ: "Doğalgaz",
     DEBT_CAT_DOGALGAZ_AVANS: "Doğalgaz Avans",
+    DEBT_CAT_GECIKME: "Gecikme Tazminatı",
     DEBT_CAT_OTHER: "Diğer",
 }
 # Demirbaş ve doğalgaz avansı KMK gereği kiracıya değil kat malikine tahakkuk eder.
@@ -199,10 +201,16 @@ class Debt(Base):
     category: Mapped[str] = mapped_column(String(24), default=DEBT_CAT_OTHER)
     # True: borç dairenin kiracısına değil kat malikine aittir (demirbaş, doğalgaz avansı)
     bill_to_owner: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Gecikme tazminatı borçları anapara borcuna bu alanla bağlanır (KMK m.20)
+    source_debt_id: Mapped[int | None] = mapped_column(ForeignKey("debts.id"))
 
     apartment: Mapped[Apartment] = relationship(back_populates="debts")
     dues: Mapped[DuesDefinition | None] = relationship(back_populates="debts")
     payments: Mapped[list["Payment"]] = relationship(back_populates="debt")
+    source_debt: Mapped["Debt | None"] = relationship(
+        remote_side="Debt.id", back_populates="late_fee_debts"
+    )
+    late_fee_debts: Mapped[list["Debt"]] = relationship(back_populates="source_debt")
 
     @property
     def paid_amount(self) -> Decimal:

@@ -1,7 +1,7 @@
 # ApartIo — Proje Durum Dokümanı
 
-> Son güncelleme: 09.07.2026
-> Durum: **Faz 1 ve Faz 2 tamamlandı**, gerçek site verisi (Troaspark) yüklendi ve finans eklentileri devrede; Render'da yayında; Faz 3 bekliyor.
+> Son güncelleme: 16.07.2026
+> Durum: **Faz 1 ve Faz 2 tamamlandı**, gerçek site verisi (Troaspark) yüklendi ve finans eklentileri devrede; Render'da yayında; sırada **Finans & Operasyon Paketi** (aşağıda), ardından Faz 3.
 
 ## 1. Proje Özeti
 
@@ -21,7 +21,8 @@ Kapsam kuralları tek merkezden (`app/scoping.py`) uygulanır; her liste/detay s
 - **Veritabanı:** SQLAlchemy 2.0 ORM — geliştirmede SQLite (`apartio.db`), üretimde `DATABASE_URL` ortam değişkeni ile PostgreSQL
 - **Frontend:** Sunucu taraflı Jinja2 şablonları + Bootstrap 5.3 + Chart.js 4 + DataTables 2 (CDN; ayrı Node/React projesi yok — `planned-actual-trip-analysis` projesiyle aynı yaklaşım)
 - **Kimlik doğrulama:** bcrypt parola hash + `itsdangerous` imzalı oturum cookie'si (7 gün)
-- **Test:** pytest + FastAPI TestClient (39 test)
+- **Test:** pytest + FastAPI TestClient (46 test)
+- **Şema değişiklikleri:** Alembic (`migrations/`) — dağıtımda `alembic upgrade head`
 
 ### Çalıştırma
 
@@ -146,6 +147,13 @@ ApartIo/
 | Doğalgaz abonelik takibi | `/gas-subscriptions` — daire bazlı abone/değil/bilinmiyor (Excel'den 42/22/56), KPI + filtre + tek tıkla güncelleme; `Apartment.gas_subscribed` |
 | Veri temizliği | Gül Sitesi demo verisi silindi (admin korundu); test amaçlı kesilen 56 avans borcu + bildirimleri kaldırıldı; curl kaynaklı bozuk Türkçe karakterli 60 kayıt onarıldı |
 
+### ✅ Eklentiler — 16.07.2026
+
+| İş | Uygulama |
+|---|---|
+| Gecikme tazminatı (KMK m.20) — İş #54 | Vadesi geçen borçlara **aylık %5** gecikme tazminatı. Hesap kuralı: tamamlanmış her gecikme ayı için, ay dönümü itibarıyla ödenmemiş anapara × %5 (ay içi ödeme o ayın matrahını düşürür — borçlu lehine); kısmi aya ve gecikme borcunun kendisine tazminat işlemez. Tahakkuk = `gecikme` kategorisinde, `Debt.source_debt_id` ile anaparaya bağlı **ayrı borç**; kesilebilir tutar = birikmiş − daha önce kesilmiş olduğundan mükerrer tahakkuk imkânsız. `/debts`'te Gecikme kolonu + toplu tahakkuk butonu; borç detayında birikmiş/kesilmiş/kesilebilir kartı + tekil tahakkuk; sorumluya bildirim. İş kuralları `services/finance.py` (`late_fee_accrued`, `apply_late_fee(s)`), rotalar `POST /debts/{id}/late-fee` ve `POST /debts/late-fees/apply` (yönetici rolleri + kapsam kontrolü) |
+| Alembic migration altyapısı | Teknik borç kapatıldı: `alembic.ini` + `migrations/` (env.py `DATABASE_URL` ve `Base.metadata`'ya bağlı, SQLite için `render_as_batch`). İlk revizyon `0001`: `debts.source_debt_id`. `create_all` (lifespan) taze kurulum için kalır → kurulumda `alembic stamp head`; mevcut DB'lerde `alembic upgrade head` (revizyon kolon zaten varsa/tablo yoksa kendini atlar). `deploy/update.sh` her dağıtımda `alembic upgrade head` çalıştırır |
+
 ### ✅ Eklentiler — 09.07.2026
 
 | İş | Uygulama |
@@ -158,7 +166,7 @@ ApartIo/
 | Raporlar | **Son Gelirler** kartı — seçili tarih aralığındaki son 10 tahsilat (Tarih, Daire, Borç linki, Tutar, Yöntem) |
 | Malik/Kiracı sayfası | **Tümü / Malik / Kiracı** tip filtresi (`?occ_type=`) + **isim arama** (`?q=`); birlikte kullanılabilir |
 
-### Test Kapsamı (39 test — tümü geçiyor)
+### Test Kapsamı (46 test — tümü geçiyor)
 
 - Parola hash/doğrulama
 - Daire kapsam filtreleri (3 rol) ve `can_access_apartment`
@@ -173,8 +181,43 @@ ApartIo/
 - Borç silme: tahsilatsız borç silinir, tahsilatlı reddedilir, yetkisiz rol 403, toplu geri almada atlanan sayısı
 - Borç/tahsilat filtreleri: Sorumlu kolonu (sakinde gizli), `q` araması, tarih aralığı, asc/desc sıralama, geçersiz tarih 400
 - Raporlarda Son Gelirler (aralık içi görünür, aralık dışı görünmez); malik/kiracı tip filtresi + isim arama
+- Gecikme tazminatı: tam ay hesabı, ay sonu gün kısıtlaması (31 Oca → 28 Şub), kısmi ödemenin matrahı düşürmesi, tazminata tazminat işlememesi, mükerrer tahakkuk engeli (zaman geçince yalnız fark), rol/kapsam 403'leri, toplu tahakkuk
 
 ## 5. Yapılacaklar
+
+### 🎯 Finans & Operasyon Paketi — öncelikli iş planı (16.07.2026)
+
+> Mevcut veri modeliyle büyük ölçüde yapılabilir; Türkiye site yönetimi pratiğinde (KMK) karşılığı güçlü işler. Sıra = öneri önceliği.
+> ~~**Ön koşul:** Alembic migration'a geçilmeli~~ → ✅ 16.07.2026'da geçildi (#54 ile birlikte).
+
+**Öncelik 1 — tahsilatı artıran üçlü**
+
+| # | İş | Not |
+|---|---|---|
+| ~~54~~ | ~~Gecikme tazminatı (KMK m.20)~~ | ✅ 16.07.2026 — bkz. Eklentiler |
+| 55 | Daire hesap ekstresi | Daire bazlı kronolojik borç/tahsilat dökümü (cari ekstre); yönetici + sakin görünümü, yazdırılabilir/PDF |
+| 56 | Otomatik borç hatırlatma | Vadesi yaklaşan/geçen borçlar için zamanlanmış uygulama içi bildirim; `notify.py` hazır, scheduler eklenecek (Faz 4'te SMS/e-posta aynı noktadan dallanır) |
+
+**Öncelik 2 — finansal derinlik**
+
+| # | İş | Not |
+|---|---|---|
+| 57 | Tahsilat makbuzu (PDF) | Her `Payment` için numaralı, yazdırılabilir makbuz |
+| 58 | Dekont yükleme → onaylı tahsilat | Sakin havale dekontu yükler, yönetici onaylayınca `Payment` oluşur; `documents` altyapısı kullanılır — online ödemenin ara adımı |
+| 59 | Kasa/banka defteri | Yöntem bazlı (nakit/havale) kasa ve banka bakiyesi, dönem sonu devir takibi |
+| 60 | İşletme projesi / yıllık bütçe (KMK m.37) | Yıllık tahmini gider → daire başına aidat önerisi; yıl içi bütçe–gerçekleşen karşılaştırma raporu |
+| 61 | Borç yaşlandırma raporu | 30/60/90+ gün gecikmiş borçların daire bazlı dökümü — icra öncesi takip listesi |
+
+**Öncelik 3 — süreç ve roller**
+
+| # | İş | Not |
+|---|---|---|
+| 62 | İhtar/icra süreç takibi | Borçlu daireye "ihtar çekildi / icrada" durumu + tarih notu; borçlar sayfasında rozet/filtre |
+| 63 | Kira sözleşmesi takibi | `Occupancy`'ye sözleşme bitiş tarihi + depozito; bitişi yaklaşanlara uyarı |
+| 64 | Demirbaş envanteri | Fiziksel demirbaş kaydı (asansör, hidrofor... — alım tarihi, garanti, servis geçmişi); Faz 3 bakım takvimiyle birleşir |
+| 65 | Denetçi rolü | Salt-okunur dördüncü rol (KMK denetçisi); `scoping.py`'ye `auditor` kapsamı |
+| 66 | Parola sıfırlama akışı | Sakin self-servis parola sıfırlama (e-posta kanalı gelene dek yönetici onaylı/tek kullanımlık bağlantı) |
+| 67 | Tahsilat oranı KPI | Dashboard'a dönem tahakkuku / tahsilat yüzdesi kartı |
 
 ### 🔜 Faz 3 — sıradaki
 
@@ -209,7 +252,7 @@ ApartIo/
 
 ### Teknik Borç / İyileştirmeler
 
-- [ ] **Alembic migration** — şu an `create_all` ile tablo oluşturuluyor; `gas_subscribed` kolonu mevcut DB'ye elle `ALTER TABLE` ile eklendi (08.07.2026) — bu tür değişiklikler artıyor, Alembic'e geçilmeli
+- [x] **Alembic migration** — ✅ 16.07.2026'da geçildi; şema değişiklikleri artık `migrations/versions/` altında, dağıtımda `update.sh` → `alembic upgrade head`
 - [ ] Üretim dağıtımı: `APARTIO_SECRET_KEY` zorunlu kılınmalı, PostgreSQL + HTTPS + reverse proxy
 - [ ] CSRF koruması (form POST'ları için)
 - [ ] Sayfalama — büyük veri setlerinde sunucu taraflı sayfalama (şu an DataTables istemci tarafında)

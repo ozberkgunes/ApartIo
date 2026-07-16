@@ -718,3 +718,132 @@ def test_residents_search_and_type_filter(client, db_session, seed_data):
 
     bogus = client.get("/residents", params={"occ_type": "bogus"}).text
     assert bogus.count(owner_badge) == 1 and bogus.count(tenant_badge) == 1
+
+
+# ---------- Gecikme tazminatı (KMK m.20, aylık %5) ----------
+
+def _overdue_debt(db_session, apartment_id, amount="1000.00", due=date(2026, 1, 10)):
+    debt = models.Debt(
+        apartment_id=apartment_id, description="Ocak aidatı",
+        amount=Decimal(amount), due_date=due, category=models.DEBT_CAT_AIDAT,
+    )
+    db_session.add(debt)
+    db_session.commit()
+    return debt
+
+
+def test_late_fee_accrues_per_completed_month(db_session, seed_data):
+    from app.services.finance import late_fee_accrued
+
+    debt = _overdue_debt(db_session, seed_data["apartments"][0].id)
+    # Vade 10 Ocak → 15 Nisan'da 3 tam ay gecikme: 1000 × %5 × 3
+    assert late_fee_accrued(debt, today=date(2026, 4, 15)) == Decimal("150.00")
+    # İlk ay dolmadan tazminat işlemez
+    assert late_fee_accrued(debt, today=date(2026, 2, 9)) == Decimal("0.00")
+    # Vadesi gelmemiş borç
+    assert late_fee_accrued(debt, today=date(2026, 1, 5)) == Decimal("0.00")
+
+
+def test_late_fee_month_end_clamp(db_session, seed_data):
+    from app.services.finance import late_fee_accrued
+
+    # 31 Ocak vadeli borcun ilk ay dönümü 28 Şubat'tır (gün kısıtlaması)
+    debt = _overdue_debt(db_session, seed_data["apartments"][0].id, due=date(2026, 1, 31))
+    assert late_fee_accrued(debt, today=date(2026, 2, 27)) == Decimal("0.00")
+    assert late_fee_accrued(debt, today=date(2026, 2, 28)) == Decimal("50.00")
+
+
+def test_late_fee_partial_payment_reduces_base(db_session, seed_data):
+    from app.services.finance import late_fee_accrued
+
+    debt = _overdue_debt(db_session, seed_data["apartments"][0].id)
+    # Ay dönümünden önce 400 ₺ ödendi → her ayın matrahı 600 ₺
+    db_session.add(models.Payment(debt_id=debt.id, amount=Decimal("400.00"), paid_at=date(2026, 2, 5)))
+    db_session.commit()
+    db_session.refresh(debt)
+    assert late_fee_accrued(debt, today=date(2026, 3, 15)) == Decimal("60.00")
+
+    # İlk ay içinde tamamı ödenirse hiç tazminat işlemez
+    db_session.add(models.Payment(debt_id=debt.id, amount=Decimal("600.00"), paid_at=date(2026, 2, 8)))
+    db_session.commit()
+    db_session.refresh(debt)
+    assert late_fee_accrued(debt, today=date(2026, 6, 15)) == Decimal("0.00")
+
+
+def test_late_fee_not_compounded(db_session, seed_data):
+    from app.services.finance import late_fee_accrued
+
+    fee_debt = models.Debt(
+        apartment_id=seed_data["apartments"][0].id, description="Gecikme tazminatı",
+        amount=Decimal("150.00"), due_date=date(2026, 1, 10), category=models.DEBT_CAT_GECIKME,
+    )
+    db_session.add(fee_debt)
+    db_session.commit()
+    # Gecikme borcunun kendisine tazminat işlemez (anapara esası)
+    assert late_fee_accrued(fee_debt, today=date(2026, 6, 15)) == Decimal("0.00")
+
+
+def test_apply_late_fee_idempotent_until_time_passes(db_session, seed_data):
+    from app.services.finance import apply_late_fee, late_fee_billable
+
+    debt = _overdue_debt(db_session, seed_data["apartments"][0].id)
+    fee = apply_late_fee(db_session, debt, today=date(2026, 4, 15))
+    assert fee is not None
+    assert fee.amount == Decimal("150.00")
+    assert fee.category == models.DEBT_CAT_GECIKME
+    assert fee.source_debt_id == debt.id
+    db_session.refresh(debt)
+
+    # Aynı gün ikinci tahakkuk üretilmez
+    assert apply_late_fee(db_session, debt, today=date(2026, 4, 15)) is None
+    assert late_fee_billable(debt, today=date(2026, 4, 15)) == Decimal("0.00")
+
+    # Bir ay daha geçince yalnız fark kesilir
+    later_fee = apply_late_fee(db_session, debt, today=date(2026, 5, 15))
+    assert later_fee is not None
+    assert later_fee.amount == Decimal("50.00")
+
+
+def test_late_fee_endpoint_roles_and_scope(client, db_session, seed_data):
+    from datetime import timedelta
+
+    d = seed_data
+    debt_b = _overdue_debt(db_session, d["apartments"][2].id, due=date.today() - timedelta(days=100))
+
+    # Sakin tahakkuk yapamaz
+    client.post("/login", data={"email": "resident@test", "password": "test1234"})
+    assert client.post(f"/debts/{debt_b.id}/late-fee").status_code == 403
+
+    # A blok yöneticisi B bloktaki borca erişemez
+    client.get("/logout")
+    client.post("/login", data={"email": "manager@test", "password": "test1234"})
+    assert client.post(f"/debts/{debt_b.id}/late-fee").status_code == 403
+
+    # Site yöneticisi tahakkuk eder; gecikme borcu + sorumluya bildirim oluşur
+    client.get("/logout")
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    response = client.post(f"/debts/{debt_b.id}/late-fee", follow_redirects=False)
+    assert response.status_code == 303
+    fee = db_session.query(models.Debt).filter_by(source_debt_id=debt_b.id).one()
+    assert fee.category == models.DEBT_CAT_GECIKME
+    notes = db_session.query(models.Notification).filter_by(user_id=d["other"].id).all()
+    assert any("Gecikme tazminatı" in n.title for n in notes)
+
+
+def test_late_fee_bulk_endpoint(client, db_session, seed_data):
+    from datetime import timedelta
+
+    d = seed_data
+    _overdue_debt(db_session, d["apartments"][0].id, due=date.today() - timedelta(days=100))
+    _overdue_debt(db_session, d["apartments"][2].id, due=date.today() - timedelta(days=100))
+
+    client.post("/login", data={"email": "admin@test", "password": "test1234"})
+    response = client.post("/debts/late-fees/apply", follow_redirects=False)
+    assert response.status_code == 303
+    fees = db_session.query(models.Debt).filter_by(category=models.DEBT_CAT_GECIKME).all()
+    assert len(fees) == 2
+
+    # Hemen ardından ikinci toplu tahakkuk yeni borç üretmez
+    client.post("/debts/late-fees/apply", follow_redirects=False)
+    fees = db_session.query(models.Debt).filter_by(category=models.DEBT_CAT_GECIKME).all()
+    assert len(fees) == 2
