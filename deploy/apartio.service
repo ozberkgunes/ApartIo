@@ -1,0 +1,17 @@
+[Unit]
+Description=ApartIo (FastAPI + uvicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/projects/ApartIo
+EnvironmentFile=/projects/ApartIo/.env.prod
+ExecStart=/projects/ApartIo/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
