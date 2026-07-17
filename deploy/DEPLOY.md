@@ -131,11 +131,21 @@ journalctl -u apartio -n 50 --no-pager   # uygulama logları
 tail -50 /var/log/nginx/error.log        # nginx logları
 ```
 
-## Güncelleme (git + GitHub Actions ile otomatik)
+## Güncelleme (git ile, elle tetiklenir)
 
-Hedef: yerelde `git push` → GitHub Actions sunucuya SSH'lanır →
-`deploy/update.sh` çalışır (git fetch/reset + pip install + **alembic upgrade** + restart).
-Workflow dosyası repoda: `.github/workflows/deploy.yml`.
+Akış: yerelde `git push` → yerelden tek komutla sunucuda
+`deploy/update.sh` çalıştırılır (git fetch/reset + pip install +
+**alembic upgrade** + restart):
+
+```bash
+git push && ssh root@SUNUCU_IP 'sudo -u deploy bash /projects/ApartIo/deploy/update.sh'
+```
+
+> GitHub Actions ile otomatik deploy denendi ve vazgeçildi (16.07.2026):
+> VPS sağlayıcının panel güvenlik duvarı 22. portu GitHub çalıştırıcılarına
+> kapalı tutuyor; dünyaya açmak istenmedi. İleride otomasyon istenirse
+> firewall'a dokunmayan seçenek: sunucuda cron ile "origin/main ilerlemişse
+> update.sh çalıştır" (pull tabanlı).
 
 > Şema değişiklikleri Alembic migration'larıyla gelir (`migrations/versions/`);
 > `update.sh` bunları `alembic upgrade head` ile PostgreSQL'e otomatik uygular.
@@ -165,13 +175,12 @@ git reset --hard origin/main
 > `Host github.com` / `IdentityFile /root/.ssh/apartio_deploy` satırlarını
 > yazın ve remote'u `git@github.com:ozberkgunes/ApartIo.git` yapın.
 
-### B. deploy kullanıcısı + Actions'ın SSH erişimi (bir kez)
+### B. deploy kullanıcısı (bir kez — 16.07.2026'da yapıldı)
 
-Actions sunucuya root ile değil, yetkisi tek işe indirilmiş `deploy`
-kullanıcısıyla bağlanır: kod ve venv `deploy`'a aittir, `uploads/`
+Güncellemeler root ile değil, yetkisi tek işe indirilmiş `deploy`
+kullanıcısıyla çalışır: kod ve venv `deploy`'a aittir, `uploads/`
 www-data'da kalır (uygulama yazar), sudo yalnız `systemctl restart apartio`
-komutuna izinlidir. Anahtar sızsa bile shell yetkisi "deploy tetiklemek"le
-sınırlı kalır.
+komutuna izinlidir.
 
 ```bash
 # 1) Kullanıcı + SSH anahtarı
@@ -200,24 +209,19 @@ chmod 440 /etc/sudoers.d/apartio-deploy
 
 Test: `sudo -u deploy bash /projects/ApartIo/deploy/update.sh` elle çalışmalı.
 
-GitHub'da **ApartIo → Settings → Secrets and variables → Actions →
-New repository secret** ile üç secret ekleyin:
-
-| Secret     | Değer                                                   |
-| ---------- | ------------------------------------------------------- |
-| `SSH_HOST` | sunucu IP'si                                            |
-| `SSH_USER` | `deploy`                                                |
-| `SSH_KEY`  | `/root/.ssh/github_actions` dosyasının TAMAMI (private) |
-
-> İsteğe bağlı sıkılaştırma: artık root ile SSH gerekmediğinden
-> `/etc/ssh/sshd_config`'de `PermitRootLogin no` yapılabilir — ama önce
-> FileZilla/SSH erişiminizi `deploy` veya başka bir kullanıcıya taşıdığınızdan
-> emin olun, yoksa sunucuya erişiminiz kapanır.
+> Not: `/home/deploy/.ssh/authorized_keys`'teki anahtar GitHub Actions
+> denemesinden kalmadır; isterseniz kendi bilgisayarınızın public key'ini
+> ekleyip doğrudan `ssh deploy@SUNUCU_IP` ile de güncelleme yapabilirsiniz.
 
 ### C. Kullanım
 
-Yerelde commit + `git push` yeterli. GitHub'da **Actions** sekmesinden
-çalışmayı izleyin; yeşilse sunucu güncellenmiştir. Acil durumda elle:
+Yerelde commit sonrası tek komut:
+
+```bash
+git push && ssh root@SUNUCU_IP 'sudo -u deploy bash /projects/ApartIo/deploy/update.sh'
+```
+
+Çıktının sonunda `active (running)` görünmelidir. Sunucudayken elle:
 
 ```bash
 sudo -u deploy bash /projects/ApartIo/deploy/update.sh
