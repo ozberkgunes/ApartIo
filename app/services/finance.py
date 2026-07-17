@@ -149,6 +149,54 @@ def apply_late_fees(db: Session, debts: list[Debt], today: date | None = None) -
     return created
 
 
+def apartment_statement(
+    apartment: Apartment, start: date | None = None, end: date | None = None
+) -> dict:
+    """Dairenin kronolojik hesap ekstresi: tahakkuk (borç) ve tahsilat (alacak)
+    satırları tarih sırasında, yürüyen bakiye ile.
+
+    Tarih aralığı verilirse aralık öncesi net bakiye "devir" olarak döner;
+    böylece filtreli görünümde de bakiye kolonu doğru kalır.
+    """
+    events = []
+    for debt in apartment.debts:
+        events.append({
+            "date": debt.due_date, "order": 0, "debt_id": debt.id,
+            "description": debt.description, "debit": debt.amount, "credit": None,
+        })
+        for p in debt.payments:
+            events.append({
+                "date": p.paid_at, "order": 1, "debt_id": debt.id,
+                "description": f"Tahsilat — {debt.description} ({p.method_label})",
+                "debit": None, "credit": p.amount,
+            })
+    events.sort(key=lambda e: (e["date"], e["order"], e["debt_id"]))
+
+    opening = Decimal("0")
+    balance = Decimal("0")
+    total_debit = total_credit = Decimal("0")
+    rows = []
+    for e in events:
+        if start and e["date"] < start:
+            opening += (e["debit"] or Decimal("0")) - (e["credit"] or Decimal("0"))
+            balance = opening
+            continue
+        if end and e["date"] > end:
+            continue
+        balance += (e["debit"] or Decimal("0")) - (e["credit"] or Decimal("0"))
+        total_debit += e["debit"] or Decimal("0")
+        total_credit += e["credit"] or Decimal("0")
+        rows.append({**e, "balance": balance})
+
+    return {
+        "rows": rows,
+        "opening": opening if start else None,
+        "total_debit": total_debit,
+        "total_credit": total_credit,
+        "closing": balance,
+    }
+
+
 def _month_bounds(period: str) -> tuple[date, date]:
     """YYYY-MM dönemini [ay başı, ay sonu] tarih aralığına çevirir."""
     year, month = int(period[:4]), int(period[5:7])

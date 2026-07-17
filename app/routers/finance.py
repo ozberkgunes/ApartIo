@@ -331,6 +331,39 @@ def _parse_date(value: str) -> date | None:
         raise HTTPException(400, "Geçersiz tarih")
 
 
+# ---------- Daire Hesap Ekstresi ----------
+
+@router.get("/apartments/{apartment_id}/statement")
+def apartment_statement(
+    apartment_id: int,
+    request: Request,
+    start: str = "",
+    end: str = "",
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    apartment = db.get(models.Apartment, apartment_id)
+    if apartment is None:
+        raise HTTPException(404, "Daire bulunamadı")
+    if not scoping.can_access_apartment(db, user, apartment):
+        raise HTTPException(403, "Bu daireye erişim yetkiniz yok.")
+    start_date, end_date = _parse_date(start), _parse_date(end)
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+    statement = finance_service.apartment_statement(apartment, start_date, end_date)
+    return templates.TemplateResponse(
+        request,
+        "finance/statement.html",
+        {
+            "user": user,
+            "apartment": apartment,
+            "statement": statement,
+            "start": start,
+            "end": end,
+        },
+    )
+
+
 @router.get("/payments")
 def list_payments(
     request: Request,

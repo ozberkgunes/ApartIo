@@ -1,4 +1,6 @@
-from contextlib import asynccontextmanager
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,7 +10,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import models  # noqa: F401 — model tablolarının kaydı için
 from .auth import AuthRedirect
-from .database import Base, engine
+from .config import REMINDERS_ENABLED
+from .database import Base, SessionLocal, engine
+from .services import reminders as reminder_service
 from .routers import (
     announcements,
     auth,
@@ -29,10 +33,33 @@ from .routers import (
 from .templating import templates
 
 
+def _run_reminders_once() -> None:
+    db = SessionLocal()
+    try:
+        reminder_service.send_due_reminders(db)
+    finally:
+        db.close()
+
+
+async def _reminder_loop() -> None:
+    await asyncio.sleep(reminder_service.REMINDER_STARTUP_DELAY_SECONDS)
+    while True:
+        try:
+            await asyncio.to_thread(_run_reminders_once)
+        except Exception:  # zamanlayıcı tek hatayla ölmesin
+            logging.getLogger("apartio.reminders").exception("Hatırlatma turu başarısız")
+        await asyncio.sleep(reminder_service.REMINDER_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    reminder_task = asyncio.create_task(_reminder_loop()) if REMINDERS_ENABLED else None
     yield
+    if reminder_task:
+        reminder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reminder_task
 
 
 app = FastAPI(title="ApartIo", lifespan=lifespan)

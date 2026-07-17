@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -237,6 +237,29 @@ class Debt(Base):
     @property
     def timing_label(self) -> str:
         return "İleri Tarihli" if self.is_future else "Aktif"
+
+
+class DebtReminder(Base):
+    """Gönderilmiş borç hatırlatmasının kaydı (İş #56).
+
+    period_key: 'upcoming' (vade yaklaşıyor, borç başına bir kez) veya
+    'overdue-N' (N = tamamlanmış gecikme ayı; her ay bir hatırlatma).
+    Teklik kısıtı, birden çok uvicorn worker'ının aynı hatırlatmayı
+    mükerrer göndermesini engeller.
+    """
+
+    __tablename__ = "debt_reminders"
+    __table_args__ = (
+        UniqueConstraint("debt_id", "period_key", name="uq_debt_reminders_debt_period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    debt_id: Mapped[int] = mapped_column(ForeignKey("debts.id"), index=True)
+    period_key: Mapped[str] = mapped_column(String(16))
+    sent_on: Mapped[date] = mapped_column(Date, default=date.today)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    debt: Mapped["Debt"] = relationship()
 
 
 class Payment(Base):

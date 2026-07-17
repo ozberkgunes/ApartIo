@@ -847,3 +847,171 @@ def test_late_fee_bulk_endpoint(client, db_session, seed_data):
     client.post("/debts/late-fees/apply", follow_redirects=False)
     fees = db_session.query(models.Debt).filter_by(category=models.DEBT_CAT_GECIKME).all()
     assert len(fees) == 2
+
+
+# ---------- Daire hesap ekstresi (İş #55) ----------
+
+def _statement_fixture(db_session, apartment_id):
+    """1000 ₺ Ocak borcu (400 ₺ Şubat tahsilatlı) + 500 ₺ Mart borcu."""
+    debt1 = models.Debt(apartment_id=apartment_id, description="Ocak aidatı",
+                        amount=Decimal("1000.00"), due_date=date(2026, 1, 10),
+                        category=models.DEBT_CAT_AIDAT)
+    debt2 = models.Debt(apartment_id=apartment_id, description="Mart aidatı",
+                        amount=Decimal("500.00"), due_date=date(2026, 3, 10),
+                        category=models.DEBT_CAT_AIDAT)
+    db_session.add_all([debt1, debt2])
+    db_session.flush()
+    db_session.add(models.Payment(debt_id=debt1.id, amount=Decimal("400.00"),
+                                  paid_at=date(2026, 2, 5)))
+    db_session.commit()
+    return debt1, debt2
+
+
+def test_statement_rows_and_running_balance(db_session, seed_data):
+    from app.services.finance import apartment_statement
+
+    apartment = seed_data["apartments"][0]
+    _statement_fixture(db_session, apartment.id)
+    db_session.refresh(apartment)
+
+    statement = apartment_statement(apartment)
+    assert [r["date"] for r in statement["rows"]] == [
+        date(2026, 1, 10), date(2026, 2, 5), date(2026, 3, 10)
+    ]
+    assert [r["balance"] for r in statement["rows"]] == [
+        Decimal("1000.00"), Decimal("600.00"), Decimal("1100.00")
+    ]
+    assert statement["opening"] is None
+    assert statement["total_debit"] == Decimal("1500.00")
+    assert statement["total_credit"] == Decimal("400.00")
+    assert statement["closing"] == Decimal("1100.00")
+
+
+def test_statement_date_filter_carries_opening_balance(db_session, seed_data):
+    from app.services.finance import apartment_statement
+
+    apartment = seed_data["apartments"][0]
+    _statement_fixture(db_session, apartment.id)
+    db_session.refresh(apartment)
+
+    # Mart'tan itibaren: devir = 1000 - 400 = 600, tek satır Mart borcu
+    statement = apartment_statement(apartment, start=date(2026, 3, 1))
+    assert statement["opening"] == Decimal("600.00")
+    assert len(statement["rows"]) == 1
+    assert statement["rows"][0]["balance"] == Decimal("1100.00")
+    assert statement["closing"] == Decimal("1100.00")
+
+
+def test_statement_page_access(client, db_session, seed_data):
+    d = seed_data
+    own_apartment = d["apartments"][0]     # kiracısı: resident
+    other_apartment = d["apartments"][2]   # B blok
+    _statement_fixture(db_session, own_apartment.id)
+
+    # Sakin kendi dairesinin ekstresini görür, başkasınınkini göremez
+    client.post("/login", data={"email": "resident@test", "password": "test1234"})
+    page = client.get(f"/apartments/{own_apartment.id}/statement")
+    assert page.status_code == 200
+    assert "Hesap Ekstresi" in page.text and "Ocak aidatı" in page.text
+    assert client.get(f"/apartments/{other_apartment.id}/statement").status_code == 403
+
+    # A blok yöneticisi B bloktaki daireye erişemez
+    client.get("/logout")
+    client.post("/login", data={"email": "manager@test", "password": "test1234"})
+    assert client.get(f"/apartments/{other_apartment.id}/statement").status_code == 403
+    assert client.get(f"/apartments/{own_apartment.id}/statement").status_code == 200
+
+
+# ---------- Otomatik borç hatırlatma (İş #56) ----------
+
+def _reminder_debt(db_session, apartment_id, due, amount="500.00"):
+    debt = models.Debt(apartment_id=apartment_id, description="Aidat",
+                       amount=Decimal(amount), due_date=due,
+                       category=models.DEBT_CAT_AIDAT)
+    db_session.add(debt)
+    db_session.commit()
+    return debt
+
+
+def test_reminder_period_keys(db_session, seed_data):
+    from app.services.reminders import _period_key
+
+    debt = _reminder_debt(db_session, seed_data["apartments"][0].id, date(2026, 7, 20))
+    assert _period_key(debt, date(2026, 7, 10)) is None          # 10 gün var, erken
+    assert _period_key(debt, date(2026, 7, 17)) == "upcoming"    # 3 gün kala
+    assert _period_key(debt, date(2026, 7, 20)) == "upcoming"    # vade günü
+    assert _period_key(debt, date(2026, 7, 21)) == "overdue-0"   # vade geçti
+    assert _period_key(debt, date(2026, 8, 20)) == "overdue-1"   # 1 tam ay
+    assert _period_key(debt, date(2026, 10, 5)) == "overdue-2"   # 2 tam ay
+
+
+def test_reminders_sent_once_per_period(db_session, seed_data):
+    from app.services.reminders import send_due_reminders
+
+    d = seed_data
+    _reminder_debt(db_session, d["apartments"][0].id, date(2026, 7, 20))
+
+    # Vadeye 3 gün kala: kiracıya (resident) tek bildirim
+    assert send_due_reminders(db_session, today=date(2026, 7, 17)) == 1
+    notes = db_session.query(models.Notification).filter_by(user_id=d["resident"].id).all()
+    assert sum(1 for n in notes if "vade yaklaşıyor" in n.title) == 1
+
+    # Aynı gün tekrar: hiçbir şey gönderilmez
+    assert send_due_reminders(db_session, today=date(2026, 7, 17)) == 0
+
+    # Vade geçince yeni dönem: bir kez daha, sonra yine sessiz
+    assert send_due_reminders(db_session, today=date(2026, 7, 25)) == 1
+    assert send_due_reminders(db_session, today=date(2026, 7, 30)) == 0
+
+    # Bir tam ay dolunca aylık tekrar
+    assert send_due_reminders(db_session, today=date(2026, 8, 21)) == 1
+
+
+def test_reminders_skip_paid_and_far_future(db_session, seed_data):
+    from app.services.reminders import send_due_reminders
+    from app.services.finance import update_debt_status
+
+    d = seed_data
+    paid = _reminder_debt(db_session, d["apartments"][0].id, date(2026, 7, 20))
+    db_session.add(models.Payment(debt_id=paid.id, amount=Decimal("500.00"),
+                                  paid_at=date(2026, 7, 1)))
+    db_session.commit()
+    db_session.refresh(paid)
+    update_debt_status(db_session, paid)
+    _reminder_debt(db_session, d["apartments"][0].id, date(2026, 12, 20))  # uzak vade
+
+    assert send_due_reminders(db_session, today=date(2026, 7, 19)) == 0
+
+
+def test_reminders_owner_billed_goes_to_owner(db_session, seed_data):
+    from app.services.reminders import send_due_reminders
+
+    d = seed_data
+    apartment = d["apartments"][0]  # kiracısı resident
+    db_session.add(models.Occupancy(apartment_id=apartment.id, user_id=d["other"].id,
+                                    type=models.OCC_OWNER, start_date=date(2026, 1, 1)))
+    debt = models.Debt(apartment_id=apartment.id, description="Demirbaş",
+                       amount=Decimal("800.00"), due_date=date(2026, 7, 20),
+                       category=models.DEBT_CAT_DEMIRBAS, bill_to_owner=True)
+    db_session.add(debt)
+    db_session.commit()
+
+    assert send_due_reminders(db_session, today=date(2026, 7, 18)) == 1
+    owner_notes = db_session.query(models.Notification).filter_by(user_id=d["other"].id).all()
+    tenant_notes = db_session.query(models.Notification).filter_by(user_id=d["resident"].id).all()
+    assert len(owner_notes) == 1 and len(tenant_notes) == 0
+
+
+def test_reminders_grouped_per_user(db_session, seed_data):
+    from app.services.reminders import send_due_reminders
+
+    d = seed_data
+    _reminder_debt(db_session, d["apartments"][0].id, date(2026, 6, 10))
+    _reminder_debt(db_session, d["apartments"][0].id, date(2026, 7, 1), amount="300.00")
+
+    # İki gecikmiş borç → kiracıya tek toplu bildirim
+    assert send_due_reminders(db_session, today=date(2026, 7, 20)) == 2
+    notes = db_session.query(models.Notification).filter_by(user_id=d["resident"].id).all()
+    overdue_notes = [n for n in notes if "vadesi geçti" in n.title]
+    assert len(overdue_notes) == 1
+    assert "2 borcunuzun" in overdue_notes[0].body

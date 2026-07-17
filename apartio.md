@@ -21,7 +21,7 @@ Kapsam kuralları tek merkezden (`app/scoping.py`) uygulanır; her liste/detay s
 - **Veritabanı:** SQLAlchemy 2.0 ORM — geliştirmede SQLite (`apartio.db`), üretimde `DATABASE_URL` ortam değişkeni ile PostgreSQL
 - **Frontend:** Sunucu taraflı Jinja2 şablonları + Bootstrap 5.3 + Chart.js 4 + DataTables 2 (CDN; ayrı Node/React projesi yok — `planned-actual-trip-analysis` projesiyle aynı yaklaşım)
 - **Kimlik doğrulama:** bcrypt parola hash + `itsdangerous` imzalı oturum cookie'si (7 gün)
-- **Test:** pytest + FastAPI TestClient (46 test)
+- **Test:** pytest + FastAPI TestClient (54 test; `APARTIO_TEST_DATABASE_URL` ile gerçek PostgreSQL'de koşulabilir)
 - **Şema değişiklikleri:** Alembic (`migrations/`) — dağıtımda `alembic upgrade head`
 
 ### Çalıştırma
@@ -147,6 +147,14 @@ ApartIo/
 | Doğalgaz abonelik takibi | `/gas-subscriptions` — daire bazlı abone/değil/bilinmiyor (Excel'den 42/22/56), KPI + filtre + tek tıkla güncelleme; `Apartment.gas_subscribed` |
 | Veri temizliği | Gül Sitesi demo verisi silindi (admin korundu); test amaçlı kesilen 56 avans borcu + bildirimleri kaldırıldı; curl kaynaklı bozuk Türkçe karakterli 60 kayıt onarıldı |
 
+### ✅ Eklentiler — 17.07.2026
+
+| İş | Uygulama |
+|---|---|
+| Daire hesap ekstresi — İş #55 | `GET /apartments/{id}/statement` — tahakkuk (vade tarihiyle) ve tahsilat (ödeme tarihiyle) satırları kronolojik, yürüyen bakiye; tarih aralığı filtresi aralık öncesini **Devir** satırına toplar; toplam tahakkuk/tahsilat/kapanış. Erişim `can_access_apartment` (sakin kendi dairesi). Yazdırılabilir: `window.print()` + `d-print-none` (navbar/filtre/butonlar çıktıya girmez). Bağlantılar: daire detayı + sakin dashboard'u. İş kuralı `finance.apartment_statement` |
+| Otomatik borç hatırlatma — İş #56 | Lifespan'da asyncio zamanlayıcı (6 saatte bir; `APARTIO_REMINDERS=0` ile kapanır). Kurallar: vadeye ≤3 gün → `upcoming` (borç başına bir kez); vadesi geçmiş → `overdue-N` (N=tamamlanmış gecikme ayı, her ay bir hatırlatma — gecikme tazminatı ritmiyle uyumlu). Kayıt: `DebtReminder` tablosu + `uq_debt_reminders_debt_period` teklik kısıtı → 2 uvicorn worker'da bile mükerrer bildirim imkânsız. Kullanıcı başına tür bazında tek toplu bildirim; muhatap `responsible_user_id` (malik borçları malike). Migration `0002`. Servis `services/reminders.py` |
+| Testler PostgreSQL'de | `conftest.py` — `APARTIO_TEST_DATABASE_URL` env ile test motoru gerçek PostgreSQL'e bağlanır (her test drop/create); güvenlik kilidi: PG veritabanı adı `_test` ile bitmek zorunda. Süit sunucuda `apartio_test` veritabanında koşuldu: 54/54 ✅; migration provası (eski şema → `upgrade head`) PostgreSQL'de doğrulandı |
+
 ### ✅ Eklentiler — 16.07.2026
 
 | İş | Uygulama |
@@ -166,7 +174,7 @@ ApartIo/
 | Raporlar | **Son Gelirler** kartı — seçili tarih aralığındaki son 10 tahsilat (Tarih, Daire, Borç linki, Tutar, Yöntem) |
 | Malik/Kiracı sayfası | **Tümü / Malik / Kiracı** tip filtresi (`?occ_type=`) + **isim arama** (`?q=`); birlikte kullanılabilir |
 
-### Test Kapsamı (46 test — tümü geçiyor)
+### Test Kapsamı (54 test — tümü geçiyor; SQLite + gerçek PostgreSQL'de doğrulandı)
 
 - Parola hash/doğrulama
 - Daire kapsam filtreleri (3 rol) ve `can_access_apartment`
@@ -182,6 +190,8 @@ ApartIo/
 - Borç/tahsilat filtreleri: Sorumlu kolonu (sakinde gizli), `q` araması, tarih aralığı, asc/desc sıralama, geçersiz tarih 400
 - Raporlarda Son Gelirler (aralık içi görünür, aralık dışı görünmez); malik/kiracı tip filtresi + isim arama
 - Gecikme tazminatı: tam ay hesabı, ay sonu gün kısıtlaması (31 Oca → 28 Şub), kısmi ödemenin matrahı düşürmesi, tazminata tazminat işlememesi, mükerrer tahakkuk engeli (zaman geçince yalnız fark), rol/kapsam 403'leri, toplu tahakkuk
+- Hesap ekstresi: satır sırası + yürüyen bakiye, tarih filtresinde devir bakiyesi, sakin/yönetici erişim kuralları (403'ler)
+- Otomatik hatırlatma: upcoming penceresi (≤3 gün), overdue ay anahtarları, dönem başına tek gönderim (dedupe), ödenmiş/uzak vadeli borç elenir, malik borcu malike, kullanıcı başına tek toplu bildirim
 
 ## 5. Yapılacaklar
 
@@ -195,8 +205,8 @@ ApartIo/
 | # | İş | Not |
 |---|---|---|
 | ~~54~~ | ~~Gecikme tazminatı (KMK m.20)~~ | ✅ 16.07.2026 — bkz. Eklentiler |
-| 55 | Daire hesap ekstresi | Daire bazlı kronolojik borç/tahsilat dökümü (cari ekstre); yönetici + sakin görünümü, yazdırılabilir/PDF |
-| 56 | Otomatik borç hatırlatma | Vadesi yaklaşan/geçen borçlar için zamanlanmış uygulama içi bildirim; `notify.py` hazır, scheduler eklenecek (Faz 4'te SMS/e-posta aynı noktadan dallanır) |
+| ~~55~~ | ~~Daire hesap ekstresi~~ | ✅ 17.07.2026 — bkz. Eklentiler |
+| ~~56~~ | ~~Otomatik borç hatırlatma~~ | ✅ 17.07.2026 — bkz. Eklentiler (Öncelik 1 tamamlandı) |
 
 **Öncelik 2 — finansal derinlik**
 

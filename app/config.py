@@ -11,3 +11,6 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 gün
 
 UPLOAD_DIR = BASE_DIR / "uploads"
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+# Otomatik borç hatırlatma zamanlayıcısı (testlerde "0" ile kapatılır)
+REMINDERS_ENABLED = os.environ.get("APARTIO_REMINDERS", "1") == "1"

@@ -1,9 +1,16 @@
+import os
+
+# Testler uygulamayı TestClient ile açar; hatırlatma zamanlayıcısı gerçek
+# veritabanına yazmasın diye app modülleri import edilmeden kapatılır.
+os.environ.setdefault("APARTIO_REMINDERS", "0")
+
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -12,17 +19,40 @@ from app.auth import hash_password
 from app.database import Base, get_db
 from app.main import app
 
+# Varsayılan: in-memory SQLite (hızlı). Gerçek PostgreSQL'de koşmak için:
+#   APARTIO_TEST_DATABASE_URL="postgresql+psycopg://pgtest:...@host:port/testdb"
+# Emniyet: PostgreSQL URL'inin veritabanı adı "test" ile başlamalı ya da "_test"
+# ile bitmelidir — testler her seferinde tüm tabloları silip yeniden kurar,
+# üretim veritabanına (apartio) yanlışlıkla bağlanmak veriyi yok eder.
+TEST_DATABASE_URL = os.environ.get("APARTIO_TEST_DATABASE_URL", "")
+
+
+def _make_test_engine():
+    if not TEST_DATABASE_URL:
+        return create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+    db_name = make_url(TEST_DATABASE_URL).database or ""
+    if not (db_name.startswith("test") or db_name.endswith("_test")):
+        raise RuntimeError(
+            "APARTIO_TEST_DATABASE_URL veritabanı adı 'test' ile başlamalı veya "
+            f"'_test' ile bitmeli (verilen: {db_name!r}) — üretim veritabanı koruması."
+        )
+    return create_engine(TEST_DATABASE_URL)
+
 
 @pytest.fixture()
 def db_session():
-    engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
+    engine = _make_test_engine()
+    if TEST_DATABASE_URL:
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     session = TestSession()
     yield session
     session.close()
+    if TEST_DATABASE_URL:
+        engine.dispose()
 
 
 @pytest.fixture()

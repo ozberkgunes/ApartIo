@@ -276,6 +276,33 @@ Sertifika 90 günlüktür; `certbot.timer` otomatik yeniler, elle işlem gerekme
 > duvarı varsa orada da TCP 443'e izin verilmeli — 80'de yaşanan zaman
 > aşımı sorununun aynısı 443'te de olur.
 
-## Sonrası (henüz yapılmadı)
+## 13. Günlük veritabanı yedeği (cron)
 
-- Yedekleme: cron ile günlük `pg_dump apartio`
+Sunucuda bir kez çalıştırın — her gece 03:30'da `pg_dump` alır, 14 günden
+eski yedekleri siler:
+
+```bash
+mkdir -p /root/backups/apartio
+cat > /etc/cron.d/apartio-backup << 'EOF'
+30 3 * * * root sudo -u postgres pg_dump -Fc apartio > /root/backups/apartio/apartio-$(date +\%F).dump && find /root/backups/apartio -name '*.dump' -mtime +14 -delete
+EOF
+chmod 644 /etc/cron.d/apartio-backup
+```
+
+Kurulumdan sonra bir kez elle doğrulayın:
+
+```bash
+sudo -u postgres pg_dump -Fc apartio > /root/backups/apartio/apartio-test.dump
+pg_restore --list /root/backups/apartio/apartio-test.dump | head   # içerik listeleniyorsa yedek sağlam
+```
+
+Geri yükleme (gerektiğinde):
+
+```bash
+sudo -u postgres pg_restore -d apartio --clean --if-exists /root/backups/apartio/apartio-YYYY-MM-DD.dump
+systemctl restart apartio
+```
+
+> Yedekler sunucunun kendi diskinde — sunucu tamamen kaybedilirse yedek de
+> gider. Ayda bir `scp`/FileZilla ile bir kopyayı kendi bilgisayarınıza
+> indirmek ucuz bir sigortadır.
